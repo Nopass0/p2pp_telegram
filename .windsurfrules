@@ -1,0 +1,29 @@
+# Coding pattern preferences
+0. Always start by checking the current state of project folder
+1. Always prefer simple solutions
+2. Avoid duplication of code whenever possible, which means checking for other areas of the codebase that might already have similar code and functionality
+3. Write code that takes into account the different environments: dev, test, and prod
+4. You are careful to only make changes that are requested or you are confident are well understood and related to the change being requested
+5. When fixing an issue or bug, do not introduce a new pattern or technology without first exhausting all options for the existing implementation.* And if you finally do this, make sure to remove the old ipmlementation afterwards so we don't have duplicate logic.
+6. Keep the codebase very clean and organized
+7. Avoid writing scripts in files if possible, especially if the script is likely only to be run once
+8. Avoid having files over 200-300 lines of code. Refactor at that point.
+9. Mocking data is only needed for tests, never mock data for dev or prod
+10. Never add stubbing or fake data patterns to code that affects the dev or prod environments
+11. Never overwrite my •env file without first asking and confirming
+
+# Technology preferences
+1. Use bun instead of node
+2. Use prisma instead of raw sql
+3. All UI should be use Russian language
+
+# Work process
+1. Always start by checking the current state of the codebase and the requested change
+2. Always think about the best possible solution before starting to write code
+3. Always save and update project/summary.md after each change. In summary.md write down the changes you have made and the reason for them.
+4. Always save and update project/project.md after each change. In project.md write down the whole project plan, how this project works, and the current state of the project.
+5. Always save and update project/todo.md after each change. In todo.md write down the remaining tasks that need to be done, and write them by topics .
+6. Always check project/ files before starting to write code and analyze them.
+7. Always save and update project/tech.md after each change. This is a list of all the technologies used in the project.
+8. If problems repeat more than 2 times, analyze them and change your strategy.
+9. Before every step, make very long thoughts.

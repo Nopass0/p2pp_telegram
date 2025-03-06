@@ -1,0 +1,21 @@
+{
+  "name": "p2pp_tg_bot",
+  "module": "src/app.ts",
+  "type": "module",
+  "scripts": {
+    "start": "bun run src/app.ts",
+    "dev": "bun --watch run src/app.ts"
+  },
+  "dependencies": {
+    "telegraf": "^4.15.3",
+    "csv-parser": "^3.0.0",
+    "dotenv": "^16.3.1"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "@types/node": "^20.10.6"
+  },
+  "peerDependencies": {
+    "typescript": "^5.0.0"
+  }
+}
