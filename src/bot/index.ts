@@ -5,48 +5,164 @@ import * as path from 'path';
 import * as os from 'os';
 import { parseCSVBuffer } from '@/services/csv-parser';
 import { formatTransactionData } from '@/utils/message-formatter';
-
-// Define context type for the bot
-interface BotContext extends Telegraf.Context {
-  session: {
-    fileRequested?: boolean;
-  };
-}
+import { UserService } from '@/services/user-service';
+import { AdminService } from '@/services/admin-service';
+import { BotContext } from '@/types';
+import { KeyboardBuilder } from './components/keyboard';
+import { AuthHandler } from './handlers/auth-handler';
+import { ReportHandler } from './handlers/report-handler';
+import { WorkSessionHandler } from './handlers/work-session-handler';
+import { MenuHandler } from './handlers/menu-handler';
+import { AdminHandler } from './handlers/admin-handler';
 
 // Create and configure bot
 export function createBot(token: string) {
   const bot = new Telegraf<BotContext>(token);
   
   // Use session middleware
-  bot.use(session());
+  bot.use(session({
+    // Настройка сессии для лучшей стабильности
+    ttl: 24 * 60 * 60 * 1000, // увеличенное время жизни сессии (24 часа)
+    getSessionKey: (ctx) => {
+      // Используем Telegram ID пользователя как ключ сессии
+      return ctx.from?.id.toString();
+    },
+  }));
   
+  // Initialize handlers
+  AuthHandler.init(bot);
+  ReportHandler.init(bot);
+  WorkSessionHandler.init(bot);
+  MenuHandler.init(bot);
+  AdminHandler.init(bot);
+
   // Command handlers
-  bot.start((ctx) => {
-    ctx.reply(
-      'Welcome to P2P Transaction Analyzer Bot! 📊\n\n' +
-      'I can analyze your P2P transaction history from CSV exports.\n\n' +
-      'To get started, forward me a CSV file from the @wallet bot.\n\n' +
-      '/help - Show help information'
-    );
+  bot.start(async (ctx) => {
+    // Проверяем, является ли пользователь администратором
+    const isAdmin = await AdminService.isAdmin(ctx.from.id.toString());
+    
+    // Если пользователь администратор
+    if (isAdmin) {
+      // Ищем пользователя по Telegram ID
+      let user = await UserService.findUserByTelegramId(ctx.from.id.toString());
+      
+      // Если пользователь не найден, проверяем существование по имени
+      if (!user) {
+        const name = ctx.from.first_name + (ctx.from.last_name ? ` ${ctx.from.last_name}` : '');
+        
+        // Проверяем, существуют ли пользователи с телеграм-аккаунтами
+        const usersWithTelegramAccounts = await UserService.getUsersWithTelegramAccounts();
+        
+        // Ищем, есть ли среди них пользователь с телеграм-аккаунтом текущего админа
+        let existingUser = null;
+        for (const u of usersWithTelegramAccounts) {
+          if (u.telegramAccounts.some(account => account.telegramId === ctx.from.id.toString())) {
+            existingUser = u;
+            break;
+          }
+        }
+        
+        // Если нашли пользователя с телеграм-аккаунтом админа
+        if (existingUser) {
+          user = existingUser;
+          console.log(`Найден существующий пользователь с привязанным телеграм-аккаунтом: ${name} (${ctx.from.id})`);
+        } else {
+          // Если не нашли по телеграм ID, ищем по имени среди всех пользователей
+          const existingUsers = await UserService.getAllUsers();
+          const adminUser = existingUsers.find(u => u.name === name);
+          
+          // Используем существующего пользователя или создаём нового
+          if (adminUser) {
+            user = adminUser;
+            // Привязываем телеграм аккаунт к существующему пользователю
+            await UserService.addTelegramAccount(
+              user.id,
+              ctx.from.id.toString(),
+              ctx.from.username,
+              ctx.from.first_name,
+              ctx.from.last_name
+            );
+            console.log(`Привязан телеграм аккаунт к существующему пользователю: ${name} (${ctx.from.id})`);
+          } else {
+            // Создаем нового пользователя только если не нашли ни по телеграм ID, ни по имени
+            user = await UserService.createUser(name);
+            
+            if (user) {
+              // Привязываем телеграм аккаунт к пользователю
+              await UserService.addTelegramAccount(
+                user.id,
+                ctx.from.id.toString(),
+                ctx.from.username,
+                ctx.from.first_name,
+                ctx.from.last_name
+              );
+              
+              console.log(`Создан новый пользователь-администратор: ${name} (${ctx.from.id})`);
+            }
+          }
+        }
+      }
+      
+      // Устанавливаем сессию
+      ctx.session.userId = user?.id;
+      ctx.session.isAdmin = true;
+      
+      // Отправляем приветственное сообщение и меню администратора
+      await ctx.reply(
+        `Добро пожаловать, ${user?.name || ctx.from.first_name}! 📊\n\n` +
+        'Вы вошли как администратор. Выберите действие из меню:',
+        KeyboardBuilder.adminMainMenu()
+      );
+    } else {
+      // Для обычных пользователей проверяем, есть ли у них уже аккаунт
+      const user = await UserService.findUserByTelegramId(ctx.from.id.toString());
+      
+      if (user) {
+        // Если пользователь уже авторизован, показываем его меню
+        ctx.session.userId = user.id;
+        ctx.session.isAdmin = false;
+        
+        await ctx.reply(
+          `Добро пожаловать, ${user.name}! 📊\n\n` +
+          'Выберите действие из меню:',
+          KeyboardBuilder.mainMenu()
+        );
+      } else {
+        // Если пользователя нет, предлагаем ввести код
+        await ctx.reply(
+          'Добро пожаловать в P2P Transaction Analyzer Bot! 📊\n\n' +
+          'Для доступа к функциям бота, пожалуйста, введите ваш код-пароль:',
+          KeyboardBuilder.mainMenu()
+        );
+      }
+    }
   });
   
   bot.help((ctx) => {
     ctx.reply(
       'P2P Transaction Analyzer Bot Help 📋\n\n' +
-      'This bot analyzes CSV files containing P2P market transaction data.\n\n' +
-      'Commands:\n' +
-      '/start - Start the bot and get a welcome message\n' +
-      '/help - Show this help message\n\n' +
-      'How to use:\n' +
-      '1. Forward a CSV file from the @wallet bot\n' +
-      '2. The bot will automatically analyze the transaction data\n\n' +
-      'Note: Only CSV files forwarded from the @wallet bot will be processed.'
+      'Этот бот анализирует CSV файлы, содержащие данные транзакций P2P рынка.\n\n' +
+      'Команды:\n' +
+      '/start - Запустить бота и получить меню\n' +
+      '/help - Показать это сообщение помощи\n\n' +
+      'Как использовать:\n' +
+      '1. Перешлите CSV файл из бота @wallet\n' +
+      '2. Бот автоматически проанализирует данные транзакций\n\n' +
+      'Примечание: Будут обработаны только CSV файлы, пересланные из бота @wallet.'
     );
   });
   
   // Handle document/file messages
   bot.on(message('document'), async (ctx) => {
     try {
+      // Проверяем авторизацию пользователя
+      if (!ctx.session.userId) {
+        return ctx.reply(
+          'Для доступа к функциям бота, пожалуйста, введите ваш код-пароль.',
+          KeyboardBuilder.mainMenu()
+        );
+      }
+
       const { document } = ctx.message;
       
       // Log complete message for debugging
@@ -156,18 +272,22 @@ export function createBot(token: string) {
       // Only continue if the message appears to be from the wallet bot
       if (!isFromWalletBot) {
         return ctx.reply(
-          'Sorry, I can only process CSV files that are forwarded from the @wallet bot.\n\n' +
-          'Please get your CSV file from the @wallet bot and forward it to me.'
+          'Извините, я могу обрабатывать только CSV файлы, пересланные из бота @wallet.\n\n' +
+          'Пожалуйста, получите ваш CSV файл из бота @wallet и перешлите его мне.',
+          ctx.session.isAdmin ? KeyboardBuilder.adminMainMenu() : KeyboardBuilder.mainMenu()
         );
       }
       
       // Make sure it's a CSV file
       if (!document.file_name?.toLowerCase().endsWith('.csv')) {
-        return ctx.reply('Please forward a valid CSV file from the @wallet bot. The file must have a .csv extension.');
+        return ctx.reply(
+          'Пожалуйста, перешлите действительный CSV файл из бота @wallet. Файл должен иметь расширение .csv.',
+          ctx.session.isAdmin ? KeyboardBuilder.adminMainMenu() : KeyboardBuilder.mainMenu()
+        );
       }
       
       // Notify the user we're processing
-      await ctx.reply('📊 Processing your CSV file...');
+      await ctx.reply('📊 Обработка вашего CSV файла...');
       
       // Get file from Telegram servers
       const fileLink = await ctx.telegram.getFileLink(document.file_id);
@@ -206,22 +326,103 @@ export function createBot(token: string) {
       
       // Format and send the results
       const message = formatTransactionData(parsedData);
-      await ctx.reply(message, { parse_mode: 'Markdown' });
+      await ctx.reply(message, { 
+        parse_mode: 'Markdown',
+        reply_markup: ctx.session.isAdmin ? KeyboardBuilder.adminMainMenu().reply_markup : KeyboardBuilder.mainMenu().reply_markup
+      });
     } catch (error) {
       console.error('Error processing file:', error);
-      ctx.reply(`Error processing the CSV file: ${(error as Error).message}\n\nPlease make sure the file is a valid CSV file with proper headers.`);
+      ctx.reply(
+        `Ошибка обработки CSV файла: ${(error as Error).message}\n\nПожалуйста, убедитесь, что файл является действительным CSV файлом с правильными заголовками.`,
+        ctx.session.isAdmin ? KeyboardBuilder.adminMainMenu() : KeyboardBuilder.mainMenu()
+      );
     }
   });
   
   // Handle regular messages
-  bot.on(message('text'), (ctx) => {
+  bot.on('text', async (ctx) => {
+    // Если пользователь уже в процессе авторизации, передаем управление дальше
+    if (ctx.session.lastAction === 'waiting_auth_code') {
+      return;
+    }
+    
+    // Если пользователь не авторизован и это не команда, просим ввести код
+    if (!ctx.session.userId && !ctx.message.text.startsWith('/')) {
+      // Проверяем, является ли пользователь администратором
+      const isAdmin = await AdminService.isAdmin(ctx.from.id.toString());
+      
+      if (isAdmin) {
+        // Проверяем, существует ли уже пользователь с данным Telegram ID
+        let user = await UserService.findUserByTelegramId(ctx.from.id.toString());
+        
+        if (user) {
+          // Если пользователь уже существует, используем его
+          ctx.session.userId = user.id;
+          ctx.session.isAdmin = true;
+          
+          await ctx.reply(
+            `Добро пожаловать, ${user.name}! Вы вошли как администратор.`,
+            KeyboardBuilder.adminMainMenu()
+          );
+        } else {
+          // Проверяем, есть ли пользователь с таким именем
+          const name = ctx.from.first_name + (ctx.from.last_name ? ` ${ctx.from.last_name}` : '');
+          const existingUsers = await UserService.getAllUsers();
+          const adminUser = existingUsers.find(u => u.name === name);
+          
+          if (adminUser) {
+            // Привязываем телеграм аккаунт к существующему пользователю
+            await UserService.addTelegramAccount(
+              adminUser.id,
+              ctx.from.id.toString(),
+              ctx.from.username,
+              ctx.from.first_name,
+              ctx.from.last_name
+            );
+            
+            ctx.session.userId = adminUser.id;
+            ctx.session.isAdmin = true;
+            
+            await ctx.reply(
+              `Добро пожаловать, ${adminUser.name}! Вы вошли как администратор.`,
+              KeyboardBuilder.adminMainMenu()
+            );
+          } else {
+            // Создаем нового пользователя и привязываем телеграм аккаунт
+            const newUser = await UserService.createUser(name);
+            
+            if (newUser) {
+              await UserService.addTelegramAccount(
+                newUser.id,
+                ctx.from.id.toString(),
+                ctx.from.username,
+                ctx.from.first_name,
+                ctx.from.last_name
+              );
+              
+              ctx.session.userId = newUser.id;
+              ctx.session.isAdmin = true;
+              
+              await ctx.reply(
+                `Добро пожаловать, ${newUser.name}! Вы были автоматически авторизованы как администратор.`,
+                KeyboardBuilder.adminMainMenu()
+              );
+            }
+          }
+        }
+      } else {
+        // Для обычных пользователей запускаем процесс авторизации
+        await AuthHandler.startAuthProcess(ctx);
+      }
+      return;
+    }
+    
     // Log text messages for debugging
     console.log('Text message received:', ctx.message.text);
     console.log('From:', ctx.message.from);
     
-    ctx.reply(
-      'To analyze your P2P transactions, please forward a CSV file from the @wallet bot.'
-    );
+    // Если сообщение не обработано, передаем его дальше
+    return;
   });
   
   return bot;
