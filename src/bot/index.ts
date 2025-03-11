@@ -346,6 +346,18 @@ export function createBot(token: string) {
       return;
     }
     
+    // Обработка процесса добавления IDEX кабинета
+    if (ctx.session.idexCabinetStep === 'waiting_idex_id') {
+      await MenuHandler.handleIdexCabinetId(ctx, ctx.message.text);
+      return;
+    } else if (ctx.session.idexCabinetStep === 'waiting_login') {
+      await MenuHandler.handleIdexCabinetLogin(ctx, ctx.message.text);
+      return;
+    } else if (ctx.session.idexCabinetStep === 'waiting_password') {
+      await MenuHandler.handleIdexCabinetPassword(ctx, ctx.message.text);
+      return;
+    }
+    
     // Если пользователь не авторизован и это не команда, просим ввести код
     if (!ctx.session.userId && !ctx.message.text.startsWith('/')) {
       // Проверяем, является ли пользователь администратором

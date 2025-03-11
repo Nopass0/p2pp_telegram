@@ -7,7 +7,7 @@ export class KeyboardBuilder {
   /**
    * Создает главное меню обычного пользователя
    */
-  static mainMenu() {
+  static mainMenu(): any {
     return Markup.keyboard([
       [{ text: '🔑 Ввести код' }, { text: '📊 Загрузить отчет' }],
       [{ text: '⏰ Начать работу' }, { text: '⏹️ Закончить работу' }],
@@ -19,66 +19,145 @@ export class KeyboardBuilder {
   /**
    * Создает главное меню администратора
    */
-  static adminMainMenu() {
+  static adminMainMenu(): any {
     return Markup.keyboard([
       [{ text: '👥 Управление пользователями' }, { text: '📊 Статистика' }],
+      [{ text: '📱 IDEX' }, { text: '🖥️Bybit' }],
       [{ text: '⚙️ Настройки' }, { text: '⚠️ Уведомления' }],
       [{ text: '🔙 Обычный режим' }, { text: '❓ Помощь' }]
     ]).resize();
   }
-  
+
   /**
-   * Создает меню управления пользователями для администратора
+   * Создает меню IDEX
    */
-  static adminUserManagementMenu() {
+  static idexMenu(): any {
     return Markup.keyboard([
-      [{ text: '➕ Добавить пользователя' }, { text: '👥 Список пользователей' }],
+      [{ text: '📱 IDEX Кабинеты' }, { text: '➕ Добавить IDEX кабинет' }],
+      [{ text: '🔄 Синхронизировать все кабинеты' }],
       [{ text: '🔙 Назад к админ-панели' }]
     ]).resize();
   }
-  
+
   /**
-   * Создает меню статистики для администратора
-   */
-  static adminStatsMenu() {
-    return Markup.keyboard([
-      [{ text: '📅 За сегодня' }, { text: '⏱️ За 24 часа' }, { text: '⌛ За час' }],
-      [{ text: '📆 За 2 дня' }, { text: '📅 За 3 дня' }, { text: '📊 За неделю' }],
-      [{ text: '📈 За месяц' }, { text: '🔍 Произвольный период' }],
-      [{ text: '🔙 Назад к админ-панели' }]
-    ]).resize();
-  }
-  
-  /**
-   * Создает клавиатуру пагинации для списков
+   * Создает инлайн клавиатуру для IDEX кабинетов с пагинацией и действиями
    * @param currentPage Текущая страница
    * @param totalPages Всего страниц
-   * @param prefix Префикс для callback-данных
+   * @param cabinets Массив кабинетов для отображения кнопок действий
    */
-  static paginationKeyboard(currentPage: number, totalPages: number, prefix: string = 'page') {
-    const buttons = [];
+  static idexCabinetKeyboard(currentPage: number, totalPages: number, cabinets: any[] = []): any {
+    const paginationButtons = [];
     
-    // Предыдущая страница
+    // Кнопка на первую страницу
     if (currentPage > 1) {
-      buttons.push(Markup.button.callback('⬅️ Назад', `${prefix}_${currentPage - 1}`));
+      paginationButtons.push(Markup.button.callback('⏮️ Первая', 'idex_page_1'));
     }
     
-    // Информация о текущей странице
-    buttons.push(Markup.button.callback(`${currentPage} из ${totalPages}`, 'noop'));
+    // Кнопка на предыдущую страницу
+    if (currentPage > 1) {
+      paginationButtons.push(Markup.button.callback('◀️ Пред.', `idex_page_${currentPage - 1}`));
+    }
     
-    // Следующая страница
+    // Текущая страница
+    paginationButtons.push(Markup.button.callback(`${currentPage} / ${totalPages}`, 'noop'));
+    
+    // Кнопка на следующую страницу
     if (currentPage < totalPages) {
-      buttons.push(Markup.button.callback('Далее ➡️', `${prefix}_${currentPage + 1}`));
+      paginationButtons.push(Markup.button.callback('След. ▶️', `idex_page_${currentPage + 1}`));
     }
     
-    return Markup.inlineKeyboard([buttons]);
+    // Кнопка на последнюю страницу
+    if (currentPage < totalPages) {
+      paginationButtons.push(Markup.button.callback('⏭️ Последняя', `idex_page_${totalPages}`));
+    }
+    
+    // Кнопки действий
+    const buttons = [
+      [Markup.button.callback('➕ Добавить IDEX кабинет', 'add_idex_cabinet')],
+      [Markup.button.callback('🔄 Синхронизировать все', 'sync_all_idex_cabinets')],
+    ];
+    
+    // Кнопки для каждого кабинета
+    cabinets.forEach(cabinet => {
+      buttons.push([
+        Markup.button.callback(`📊 Кабинет #${cabinet.id}`, `view_idex_cabinet_details_${cabinet.id}`),
+        Markup.button.callback(`📋 Транзакции`, `view_idex_transactions_${cabinet.id}_1_all`)
+      ]);
+    });
+    
+    buttons.push(paginationButtons);
+    buttons.push([Markup.button.callback('🔙 Назад', 'back_to_admin')]);
+    
+    return Markup.inlineKeyboard(buttons);
   }
-  
+
   /**
-   * Создает клавиатуру для управления конкретным пользователем
+   * Создает инлайн клавиатуру для управления IDEX кабинетом
+   * @param cabinetId ID кабинета IDEX
+   * @returns Inline-клавиатура для управления кабинетом
+   */
+  static idexCabinetActionsKeyboard(cabinetId: number) {
+    return Markup.inlineKeyboard([
+      [
+        Markup.button.callback('📊 Детали кабинета', `idex_cabinet_details_${cabinetId}`),
+        Markup.button.callback('💵 Транзакции', `idex_cabinet_tx_${cabinetId}`)
+      ],
+      [
+        Markup.button.callback('🔄 Синхронизировать', `idex_cabinet_sync_${cabinetId}`),
+        Markup.button.callback('🔧 Настройки', `idex_cabinet_settings_${cabinetId}`)
+      ],
+      [
+        Markup.button.callback('⬅️ Назад', 'list_idex_cabinets')
+      ]
+    ]);
+  }
+
+  /**
+   * Создает инлайн клавиатуру для просмотра транзакций IDEX кабинета с пагинацией
+   * @param cabinetId ID кабинета IDEX
+   * @param currentPage Текущая страница
+   * @param totalPages Всего страниц
+   */
+  static idexTransactionsKeyboard(cabinetId: number, currentPage: number, totalPages: number): InlineKeyboardMarkup {
+    const paginationButtons = [];
+    
+    // Кнопка на первую страницу
+    if (currentPage > 1) {
+      paginationButtons.push(Markup.button.callback('⏮️ Первая', `view_idex_transactions_${cabinetId}_1`));
+    }
+    
+    // Кнопка на предыдущую страницу
+    if (currentPage > 1) {
+      paginationButtons.push(Markup.button.callback('◀️ Пред.', `view_idex_transactions_${cabinetId}_${currentPage - 1}`));
+    }
+    
+    // Текущая страница
+    paginationButtons.push(Markup.button.callback(`${currentPage} / ${totalPages}`, 'noop'));
+    
+    // Кнопка на следующую страницу
+    if (currentPage < totalPages) {
+      paginationButtons.push(Markup.button.callback('След. ▶️', `view_idex_transactions_${cabinetId}_${currentPage + 1}`));
+    }
+    
+    // Кнопка на последнюю страницу
+    if (currentPage < totalPages) {
+      paginationButtons.push(Markup.button.callback('⏭️ Последняя', `view_idex_transactions_${cabinetId}_${totalPages}`));
+    }
+    
+    return Markup.inlineKeyboard([
+      paginationButtons,
+      [
+        Markup.button.callback('🔄 Обновить', `sync_idex_cabinet_${cabinetId}`),
+        Markup.button.callback('🔙 Назад', `back_to_idex_cabinet_${cabinetId}`)
+      ]
+    ]);
+  }
+
+  /**
+   * Создает инлайн клавиатуру для управления конкретным пользователем
    * @param userId ID виртуального пользователя
    */
-  static userManagementKeyboard(userId: number) {
+  static userManagementKeyboard(userId: number): any {
     return Markup.inlineKeyboard([
       [
         Markup.button.callback('🔄 Сменить код', `regenerate_${userId}`),
@@ -104,7 +183,7 @@ export class KeyboardBuilder {
    * @param action Действие для подтверждения
    * @param id ID объекта
    */
-  static confirmationKeyboard(action: string, id: number | string) {
+  static confirmationKeyboard(action: string, id: number | string): any {
     return Markup.inlineKeyboard([
       [
         Markup.button.callback('✅ Да', `confirm_${action}_${id}`),
@@ -114,18 +193,19 @@ export class KeyboardBuilder {
   }
   
   /**
-   * Создает клавиатуру с кнопкой отмены операции
+   * Создает клавиатуру для отмены операции
+   * @returns Объект клавиатуры
    */
   static cancelKeyboard() {
     return Markup.keyboard([
-      [{ text: '❌ Отмена' }]
+      ['❌ Отмена']
     ]).oneTime().resize();
   }
   
   /**
    * Создает клавиатуру с быстрым выбором временных периодов
    */
-  static periodSelectionKeyboard() {
+  static periodSelectionKeyboard(): any {
     return Markup.inlineKeyboard([
       [
         Markup.button.callback('Сегодня', 'period_day'),
@@ -148,10 +228,10 @@ export class KeyboardBuilder {
    * Создает клавиатуру с действиями после создания пользователя
    * @param userId ID созданного пользователя
    */
-  static userActionsAfterCreateKeyboard(userId: number) {
+  static userActionsAfterCreateKeyboard(userId: number): any {
     return Markup.inlineKeyboard([
       [Markup.button.callback('📝 Просмотреть детали', `user_${userId}`)],
-      [Markup.button.callback('➕ Добавить еще пользователя', 'add_more_users')],
+      [Markup.button.callback('➕ Создать ещё одного', 'add_more_users')],
       [Markup.button.callback('🔙 Вернуться в меню', 'admin_user_menu')]
     ]);
   }
@@ -159,7 +239,7 @@ export class KeyboardBuilder {
   /**
    * Создает пагинированную инлайн-клавиатуру для списка пользователей
    */
-  static userListPaginationKeyboard(users: any[], currentPage: number, totalPages: number) {
+  static userListPaginationKeyboard(users: any[], currentPage: number, totalPages: number): any {
     // Создаем кнопки для каждого пользователя на текущей странице
     const userButtons = users.map(user => [
       Markup.button.callback(`${user.name} (ID: ${user.id})`, `user_${user.id}`)
@@ -208,7 +288,7 @@ export class KeyboardBuilder {
   /**
    * Создает клавиатуру для управления конкретным пользователем
    */
-  static userDetailsKeyboard(userId: number, isActive: boolean = true) {
+  static userDetailsKeyboard(userId: number, isActive: boolean = true): any {
     const buttons = [
       [
         Markup.button.callback(`${isActive ? '🚫 Заблокировать' : '✅ Активировать'}`, `toggle_user_status_${userId}`),
@@ -229,7 +309,7 @@ export class KeyboardBuilder {
   /**
    * Создает клавиатуру для пагинации транзакций пользователя
    */
-  static transactionsPaginationKeyboard(userId: number, currentPage: number, totalTransactions: number) {
+  static transactionsPaginationKeyboard(userId: number, currentPage: number, totalTransactions: number): InlineKeyboardMarkup {
     const totalPages = Math.ceil(totalTransactions / 5);
     
     // Создаем кнопки пагинации
@@ -237,15 +317,21 @@ export class KeyboardBuilder {
     
     // Кнопка "Назад" (если не на первой странице)
     if (currentPage > 1) {
-      paginationButtons.push(Markup.button.callback('⬅️', `user_transactions_page_${currentPage - 1}_${userId}`));
+      paginationButtons.push(
+        Markup.button.callback('⬅️', `user_transactions_page_${currentPage - 1}_${userId}`)
+      );
     }
     
     // Кнопка текущей страницы
-    paginationButtons.push(Markup.button.callback(`${currentPage} / ${totalPages}`, 'current_page'));
+    paginationButtons.push(
+      Markup.button.callback(`${currentPage} из ${totalPages}`, 'page_info_do_nothing')
+    );
     
     // Кнопка "Вперед" (если не на последней странице)
     if (currentPage < totalPages) {
-      paginationButtons.push(Markup.button.callback('➡️', `user_transactions_page_${currentPage + 1}_${userId}`));
+      paginationButtons.push(
+        Markup.button.callback('➡️', `user_transactions_page_${currentPage + 1}_${userId}`)
+      );
     }
     
     // Формируем клавиатуру с пагинацией и другими кнопками
@@ -267,7 +353,7 @@ export class KeyboardBuilder {
   /**
    * Создает клавиатуру для фильтрации транзакций по датам
    */
-  static transactionsDateFilterKeyboard(userId: number) {
+  static transactionsDateFilterKeyboard(userId: number): InlineKeyboardMarkup {
     // Получаем текущую дату
     const today = new Date();
     
@@ -300,14 +386,372 @@ export class KeyboardBuilder {
         Markup.button.callback('📅 Последние 30 дней', `transactions_date_${userId}_${monthAgoStr}_${todayStr}`)
       ],
       [
-        Markup.button.callback('📝 Указать свой период', `transactions_custom_date_${userId}`),
-        Markup.button.callback('🔍 Все транзакции', `user_transactions_${userId}`)
+        Markup.button.callback('📆 За месяц', `transactions_date_${userId}_${monthAgoStr}_${todayStr}`),
+        Markup.button.callback('📋 Все транзакции', `user_transactions_${userId}`)
       ],
       [
+        Markup.button.callback('📆 Свой диапазон дат', `transactions_custom_date_${userId}`),
         Markup.button.callback('🔙 Назад к пользователю', `user_${userId}`)
       ]
     ];
     
     return Markup.inlineKeyboard(buttons);
+  }
+
+  /**
+   * Создает меню действий для кабинета IDEX
+   * @param cabinetId ID кабинета IDEX
+   * @returns Inline-клавиатура
+   */
+  static idexCabinetActionsKeyboard(cabinetId: number): InlineKeyboardMarkup {
+    return Markup.inlineKeyboard([
+      [
+        Markup.button.callback('📊 Детали кабинета', `view_idex_cabinet_details_${cabinetId}`),
+        Markup.button.callback('🔄 Синхронизировать', `sync_idex_cabinet_${cabinetId}`)
+      ],
+      [
+        Markup.button.callback('📋 Все транзакции', `view_idex_transactions_${cabinetId}_1_all`),
+        Markup.button.callback('❌ Удалить кабинет', `delete_idex_cabinet_${cabinetId}`)
+      ],
+      [
+        Markup.button.callback('📆 Фильтр по времени', `idex_time_filter_${cabinetId}`)
+      ],
+      [
+        Markup.button.callback('🔙 Назад к IDEX кабинетам', 'back_to_idex_cabinets')
+      ]
+    ]);
+  }
+
+  /**
+   * Создает меню выбора временного фильтра для транзакций IDEX
+   * @param cabinetId ID кабинета IDEX
+   * @returns Inline-клавиатура
+   */
+  static idexTimeFilterKeyboard(cabinetId: number): InlineKeyboardMarkup {
+    return Markup.inlineKeyboard([
+      [
+        Markup.button.callback('🕛 За 12 часов', `view_idex_transactions_${cabinetId}_1_last12h`),
+        Markup.button.callback('🕒 За 24 часа', `view_idex_transactions_${cabinetId}_1_last24h`)
+      ],
+      [
+        Markup.button.callback('📅 Сегодня', `view_idex_transactions_${cabinetId}_1_today`),
+        Markup.button.callback('📅 Вчера', `view_idex_transactions_${cabinetId}_1_yesterday`)
+      ],
+      [
+        Markup.button.callback('📆 За 2 дня', `view_idex_transactions_${cabinetId}_1_last2days`),
+        Markup.button.callback('📆 За неделю', `view_idex_transactions_${cabinetId}_1_thisWeek`)
+      ],
+      [
+        Markup.button.callback('📆 За месяц', `view_idex_transactions_${cabinetId}_1_thisMonth`),
+        Markup.button.callback('📋 Все транзакции', `view_idex_transactions_${cabinetId}_1_all`)
+      ],
+      [
+        Markup.button.callback('📆 Свой диапазон дат', `custom_date_range_${cabinetId}`)
+      ],
+      [
+        Markup.button.callback('🔙 Назад', `back_to_idex_cabinet_${cabinetId}`)
+      ]
+    ]);
+  }
+  
+  /**
+   * Создает пагинированную инлайн-клавиатуру для списка транзакций IDEX
+   */
+  static idexTransactionsPaginationKeyboard(
+    cabinetId: number, 
+    currentPage: number, 
+    totalPages: number, 
+    timeFilter: string = 'all'
+  ): InlineKeyboardMarkup {
+    const buttons = [];
+    
+    // Добавляем навигационные кнопки
+    const navigationRow = [];
+    
+    // Всегда добавляем кнопку для возврата на первую страницу, если мы не на первой странице
+    if (currentPage > 1) {
+      navigationRow.push(
+        Markup.button.callback('⬅️', `view_idex_transactions_${cabinetId}_${currentPage - 1}_${timeFilter}`)
+      );
+    }
+    
+    // Кнопка предыдущей страницы
+    if (currentPage > 1) {
+      navigationRow.push(
+        Markup.button.callback('◀️ Назад', `view_idex_transactions_${cabinetId}_${currentPage - 1}_${timeFilter}`)
+      );
+    }
+    
+    // Отображаем текущую страницу из общего количества
+    navigationRow.push(
+      Markup.button.callback(`${currentPage} / ${totalPages}`, 'current_page')
+    );
+    
+    // Кнопка следующей страницы
+    if (currentPage < totalPages) {
+      navigationRow.push(
+        Markup.button.callback('▶️ Вперед', `view_idex_transactions_${cabinetId}_${currentPage + 1}_${timeFilter}`)
+      );
+    }
+    
+    // Всегда добавляем кнопку для перехода на последнюю страницу, если мы не на последней странице
+    if (currentPage < totalPages) {
+      navigationRow.push(
+        Markup.button.callback('⏭️ Последняя', `view_idex_transactions_${cabinetId}_${totalPages}_${timeFilter}`)
+      );
+    }
+    
+    // Объединяем все кнопки
+    buttons.push(navigationRow);
+    
+    // Добавляем кнопку для выбора временного фильтра
+    buttons.push([
+      Markup.button.callback('📆 Фильтр по времени', `idex_tx_filter_${cabinetId}`)
+    ]);
+    
+    // Кнопка для возврата к деталям кабинета
+    buttons.push([
+      Markup.button.callback('◀️ Назад к кабинету', `idex_cabinet_details_${cabinetId}`)
+    ]);
+    
+    return Markup.inlineKeyboard(buttons);
+  }
+  
+  /**
+   * Создает клавиатуру для подтверждения действия
+   * @param confirmAction Действие для подтверждения
+   * @param cancelAction Действие для отмены
+   * @returns Inline-клавиатура
+   */
+  static confirmActionKeyboard(confirmAction: string, cancelAction: string): InlineKeyboardMarkup {
+    return Markup.inlineKeyboard([
+      [
+        Markup.button.callback('✅ Да', confirmAction),
+        Markup.button.callback('❌ Нет', cancelAction)
+      ]
+    ]);
+  }
+  
+  /**
+   * Создает клавиатуру для отмены ввода
+   * @param cancelAction Действие для отмены
+   * @returns Inline-клавиатура
+   */
+  static cancelInputKeyboard(cancelAction: string): InlineKeyboardMarkup {
+    return Markup.inlineKeyboard([
+      [Markup.button.callback('❌ Отменить', cancelAction)]
+    ]);
+  }
+
+  /**
+   * Создает клавиатуру для пагинации при просмотре транзакций кабинета IDEX
+   * @param cabinetId ID кабинета
+   * @param currentPage Текущая страница
+   * @param totalPages Всего страниц
+   * @param timeFilter Текущий фильтр времени
+   * @returns Клавиатуру с кнопками навигации
+   */
+  static idexTransactionsPaginationKeyboard(
+    cabinetId: number, 
+    currentPage: number, 
+    totalPages: number,
+    timeFilter: string = 'all'
+  ): InlineKeyboardMarkup {
+    const keyboard: InlineKeyboardButton[][] = [];
+    
+    // Добавляем навигационные кнопки для пагинации
+    const paginationRow: InlineKeyboardButton[] = [];
+    
+    // Кнопка "Назад" (если не на первой странице)
+    if (currentPage > 1) {
+      paginationRow.push(
+        Markup.button.callback('◀️ Назад', `idex_tx_page_${cabinetId}_${currentPage - 1}_${timeFilter}`)
+      );
+    }
+    
+    // Кнопка текущей страницы
+    paginationRow.push(
+      Markup.button.callback(`${currentPage} из ${totalPages}`, 'page_info_do_nothing')
+    );
+    
+    // Кнопка "Вперед" (если не на последней странице)
+    if (currentPage < totalPages) {
+      paginationRow.push(
+        Markup.button.callback('➡️', `idex_tx_page_${cabinetId}_${currentPage + 1}_${timeFilter}`)
+      );
+    }
+    
+    if (paginationRow.length > 0) {
+      keyboard.push(paginationRow);
+    }
+    
+    // Добавляем кнопку для выбора временного фильтра
+    keyboard.push([
+      {
+        text: '📆 Фильтр по времени',
+        callback_data: `idex_tx_filter_${cabinetId}`
+      }
+    ]);
+    
+    // Кнопка для возврата к деталям кабинета
+    keyboard.push([
+      {
+        text: '◀️ Назад к кабинету',
+        callback_data: `idex_cabinet_details_${cabinetId}`
+      }
+    ]);
+    
+    return { inline_keyboard: keyboard };
+  }
+  
+  /**
+   * Создает клавиатуру для выбора временного фильтра при просмотре транзакций
+   * @param cabinetId ID кабинета
+   * @returns Клавиатуру с вариантами временных фильтров
+   */
+  static idexTimeFilterKeyboard(cabinetId: number): InlineKeyboardMarkup {
+    const keyboard: InlineKeyboardButton[][] = [
+      [
+        { text: '🕛 За 12 часов', callback_data: `idex_tx_time_${cabinetId}_last12h` },
+        { text: '🕒 За 24 часа', callback_data: `idex_tx_time_${cabinetId}_last24h` }
+      ],
+      [
+        { text: '📅 Сегодня', callback_data: `idex_tx_time_${cabinetId}_today` },
+        { text: '📅 Вчера', callback_data: `idex_tx_time_${cabinetId}_yesterday` }
+      ],
+      [
+        { text: '📆 За 2 дня', callback_data: `idex_tx_time_${cabinetId}_last2days` },
+        { text: '📆 За неделю', callback_data: `idex_tx_time_${cabinetId}_thisWeek` }
+      ],
+      [
+        { text: '📆 За месяц', callback_data: `idex_tx_time_${cabinetId}_thisMonth` },
+        { text: '📋 Все транзакции', callback_data: `idex_tx_time_${cabinetId}_all` }
+      ],
+      [
+        { text: '📆 Свой диапазон дат', callback_data: `custom_date_range_${cabinetId}` }
+      ],
+      [
+        { text: '◀️ Назад', callback_data: `back_to_idex_cabinet_${cabinetId}` }
+      ]
+    ];
+    
+    return { inline_keyboard: keyboard };
+  }
+
+  /**
+   * Создает клавиатуру для меню управления пользователями
+   * @returns Объект клавиатуры
+   */
+  static adminUserManagementMenu() {
+    return Markup.keyboard([
+      ['👥 Список пользователей', '➕ Добавить пользователя'],
+      ['📊 Статистика', '🔙 Назад к админ-панели']
+    ]).resize();
+  }
+  
+  /**
+   * Создает inline клавиатуру для пагинации списка пользователей
+   * @param currentPage Текущая страница
+   * @param totalPages Общее количество страниц
+   * @param pageSize Размер страницы (элементов на странице)
+   * @returns Объект inline клавиатуры
+   */
+  static userListPaginationKeyboard(currentPage: number, totalPages: number, pageSize: number = 5) {
+    const buttons = [];
+    
+    // Добавляем строку с кнопками пагинации
+    const paginationRow = [];
+    
+    // Кнопка "Предыдущая страница"
+    if (currentPage > 1) {
+      paginationRow.push(
+        Markup.button.callback('◀️', `user_list_page_${currentPage - 1}`)
+      );
+    }
+    
+    // Кнопка текущей страницы
+    paginationRow.push(
+      Markup.button.callback(`${currentPage} из ${totalPages}`, 'page_info_do_nothing')
+    );
+    
+    // Кнопка "Следующая страница"
+    if (currentPage < totalPages) {
+      paginationRow.push(
+        Markup.button.callback('▶️', `user_list_page_${currentPage + 1}`)
+      );
+    }
+    
+    buttons.push(paginationRow);
+    
+    // Добавляем кнопку возврата в меню
+    buttons.push([
+      Markup.button.callback('🔙 Назад к управлению пользователями', 'admin_user_menu')
+    ]);
+    
+    return Markup.inlineKeyboard(buttons);
+  }
+  
+  /**
+   * Создает inline клавиатуру для просмотра деталей пользователя
+   * @param userId ID пользователя
+   * @returns Объект inline клавиатуры
+   */
+  static userDetailsKeyboard(userId: number) {
+    return Markup.inlineKeyboard([
+      [
+        Markup.button.callback('📊 Статистика', `user_stats_${userId}`),
+        Markup.button.callback('✏️ Переименовать', `rename_user_${userId}`)
+      ],
+      [
+        Markup.button.callback('🗑️ Удалить', `delete_${userId}`)
+      ],
+      [
+        Markup.button.callback('🔙 К списку пользователей', 'user_list')
+      ]
+    ]);
+  }
+  
+  /**
+   * Создает inline клавиатуру после создания пользователя
+   * @param userId ID созданного пользователя
+   * @returns Объект inline клавиатуры
+   */
+  static userActionsAfterCreateKeyboard(userId: number) {
+    return Markup.inlineKeyboard([
+      [
+        Markup.button.callback('👁️ Просмотреть информацию', `user_${userId}`)
+      ],
+      [
+        Markup.button.callback('👥 К списку пользователей', 'user_list')
+      ],
+      [
+        Markup.button.callback('➕ Создать ещё одного', 'add_more_users')
+      ]
+    ]);
+  }
+  
+  /**
+   * Создает клавиатуру для отмены ввода
+   * @param cancelAction Действие при отмене
+   * @returns Объект inline клавиатуры
+   */
+  static cancelInputKeyboard(cancelAction: string) {
+    return Markup.inlineKeyboard([
+      [
+        Markup.button.callback('❌ Отмена', cancelAction)
+      ]
+    ]);
+  }
+  
+  /**
+   * Создает клавиатуру для меню статистики пользователей
+   * @returns Объект клавиатуры
+   */
+  static adminStatsMenu() {
+    return Markup.keyboard([
+      ['📊 Общая статистика', '📈 Активные пользователи'],
+      ['📉 Неактивные пользователи', '💰 Транзакции'],
+      ['🔙 Назад к управлению']
+    ]).resize();
   }
 }

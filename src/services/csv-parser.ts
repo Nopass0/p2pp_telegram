@@ -1,4 +1,4 @@
-import { P2PTransaction, ParsedCSV } from '@/types';
+import type { P2PTransaction, ParsedCSV } from '@/types';
 import csvParser from 'csv-parser';
 import { createReadStream } from 'fs';
 
@@ -50,8 +50,16 @@ export async function parseCSVBuffer(buffer: Buffer): Promise<ParsedCSV> {
                           firstLine.includes('Type') ||
                           firstLine.includes('Asset');
     
+    // Detect if it's the P2P CSV format from the example
+    const isP2PExampleFormat = firstLine.includes('Ad Number') && 
+                              firstLine.includes('Ad Type') && 
+                              firstLine.includes('Order Number') &&
+                              firstLine.includes('Role') &&
+                              firstLine.includes('Crypto Amount');
+    
     console.log('CSV first line:', firstLine);
     console.log('Detected as Binance P2P format:', isBinanceP2P);
+    console.log('Detected as P2P Example format:', isP2PExampleFormat);
     
     // Create a readable stream from the buffer
     const bufferStream = new Readable();
@@ -65,7 +73,9 @@ export async function parseCSVBuffer(buffer: Buffer): Promise<ParsedCSV> {
         console.log('Raw CSV row:', data);
         
         let transaction;
-        if (isBinanceP2P) {
+        if (isP2PExampleFormat) {
+          transaction = processP2PExampleFormat(data);
+        } else if (isBinanceP2P) {
           transaction = processBinanceP2PFormat(data);
         } else {
           transaction = normalizeTransaction(data);
@@ -164,6 +174,44 @@ function processBinanceP2PFormat(data: Record<string, any>): P2PTransaction {
 }
 
 /**
+ * Process the specific P2P CSV format from the example
+ */
+function processP2PExampleFormat(data: Record<string, any>): P2PTransaction {
+  console.log('Processing as P2P Example format:', data);
+  
+  // Key fields from the example CSV format
+  // "Ad Number","Ad Type","Order Number","Role","Crypto Amount","Crypto Currency","Fiat Amount","Fiat Currency","Price","Payment Method","Creation Time","Completion Time"
+  
+  // Create transaction object with explicit mapping
+  const transaction: P2PTransaction = {
+    id: String(data['Ad Number'] || ''),
+    orderNo: String(data['Order Number'] || ''),
+    dateTime: String(data['Completion Time'] || data['Creation Time'] || ''),
+    type: String(data['Ad Type'] || ''),
+    asset: String(data['Crypto Currency'] || 'USDT'),
+    amount: parseFloat(String(data['Crypto Amount'] || 0)),
+    totalPrice: parseFloat(String(data['Fiat Amount'] || 0)),
+    unitPrice: parseFloat(String(data['Price'] || 0)),
+    counterparty: String(data['Role'] || ''),
+    status: 'Completed', // Assuming all transactions in the file are completed
+    paymentMethod: String(data['Payment Method'] || '')
+  };
+  
+  // Add creation time as a separate field if it exists
+  if (data['Creation Time']) {
+    transaction['creationTime'] = String(data['Creation Time']);
+  }
+  
+  // Add fiat currency if it exists
+  if (data['Fiat Currency']) {
+    transaction['fiatCurrency'] = String(data['Fiat Currency']);
+  }
+  
+  console.log('Processed P2P Example transaction:', transaction);
+  return transaction;
+}
+
+/**
  * Normalize a transaction row from CSV
  */
 function normalizeTransaction(data: Record<string, any>): P2PTransaction {
@@ -179,6 +227,36 @@ function normalizeTransaction(data: Record<string, any>): P2PTransaction {
     cleanedData[normalizedKey] = data[key];
   });
   
+  // Check if this is the P2P CSV format seen in the example
+  const isP2PFormat = 'adnumber' in cleanedData && 'ordernumber' in cleanedData;
+  
+  if (isP2PFormat) {
+    console.log('Detected P2P format CSV row');
+    // Map the P2P specific fields based on the example format
+    const transaction: P2PTransaction = {
+      id: String(cleanedData.adnumber || ''),
+      orderNo: String(cleanedData.ordernumber || ''),
+      dateTime: String(cleanedData.completiontime || cleanedData.creationtime || ''),
+      type: String(cleanedData.adtype || ''),
+      asset: String(cleanedData.cryptocurrency || 'USDT'),
+      amount: parseFloat(String(cleanedData.cryptoamount || 0)),
+      totalPrice: parseFloat(String(cleanedData.fiatamount || 0)),
+      unitPrice: parseFloat(String(cleanedData.price || 0)),
+      counterparty: String(cleanedData.role || ''),
+      status: 'Completed', // Assuming all transactions in the file are completed
+    };
+    
+    // Add any additional fields from original data
+    Object.keys(cleanedData).forEach(key => {
+      if (!(key in transaction)) {
+        transaction[key] = cleanedData[key];
+      }
+    });
+    
+    console.log('Processed P2P transaction:', transaction);
+    return transaction;
+  }
+  
   // Debug normalized keys
   console.log('Normalized keys:', Object.keys(cleanedData));
   
@@ -187,7 +265,8 @@ function normalizeTransaction(data: Record<string, any>): P2PTransaction {
   const possibleDateKeys = [
     'datetime', 'date', 'time', 'createtime', 'ordertime', 'createdat', 
     'timestamp', 'transactiondate', 'transactiontime', 'transactiondatetime',
-    'created', 'completed', 'ordered', 'ordercreatedat', 'ordercreatetime'
+    'created', 'completed', 'ordered', 'ordercreatedat', 'ordercreatetime',
+    'completiontime', 'creationtime' // Adding these based on the example
   ];
   
   for (const key of Object.keys(cleanedData)) {
@@ -205,16 +284,16 @@ function normalizeTransaction(data: Record<string, any>): P2PTransaction {
   
   // Map to our transaction interface
   const transaction: P2PTransaction = {
-    id: String(cleanedData.orderid || cleanedData.id || cleanedData.ordernum || ''),
+    id: String(cleanedData.orderid || cleanedData.id || cleanedData.ordernum || cleanedData.adnumber || ''),
     orderNo: String(cleanedData.orderno || cleanedData.ordernumber || cleanedData.ordernum || cleanedData.no || ''),
     dateTime: dateTime,
-    type: String(cleanedData.type || cleanedData.ordertype || cleanedData.side || cleanedData.direction || cleanedData.tradetype || ''),
+    type: String(cleanedData.type || cleanedData.ordertype || cleanedData.side || cleanedData.direction || cleanedData.tradetype || cleanedData.adtype || ''),
     asset: String(cleanedData.asset || cleanedData.coin || cleanedData.cryptocurrency || cleanedData.currency || cleanedData.token || 'USDT'),
-    amount: parseFloat(String(cleanedData.amount || cleanedData.quantity || cleanedData.volume || cleanedData.qty || 0)),
-    totalPrice: parseFloat(String(cleanedData.totalprice || cleanedData.total || cleanedData.money || cleanedData.fiat || cleanedData.sum || 0)),
+    amount: parseFloat(String(cleanedData.amount || cleanedData.quantity || cleanedData.volume || cleanedData.qty || cleanedData.cryptoamount || 0)),
+    totalPrice: parseFloat(String(cleanedData.totalprice || cleanedData.total || cleanedData.money || cleanedData.fiat || cleanedData.sum || cleanedData.fiatamount || 0)),
     unitPrice: parseFloat(String(cleanedData.unitprice || cleanedData.price || cleanedData.rate || cleanedData.exchangerate || 0)),
-    counterparty: String(cleanedData.counterparty || cleanedData.counterpartyname || cleanedData.trader || cleanedData.opponent || cleanedData.username || ''),
-    status: String(cleanedData.status || cleanedData.state || cleanedData.orderstatus || ''),
+    counterparty: String(cleanedData.counterparty || cleanedData.counterpartyname || cleanedData.trader || cleanedData.opponent || cleanedData.username || cleanedData.role || ''),
+    status: String(cleanedData.status || cleanedData.state || cleanedData.orderstatus || 'Completed'),
   };
   
   // If date is not found, check if there's any key that might contain a date-like string

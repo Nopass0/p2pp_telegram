@@ -117,3 +117,39 @@ model NotificationSettings {
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
 }
+
+model IdexCabinet {
+  id          Int       @id @default(autoincrement())
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  idexId      Int
+  login       String
+  password    String
+  
+  transactions IdexTransaction[] // Связанные транзакции
+}
+
+// Транзакция из IDEX
+model IdexTransaction {
+  id                Int         @id @default(autoincrement())
+  externalId        BigInt      // ID транзакции в IDEX
+  paymentMethodId   BigInt      // ID метода платежа
+  wallet            String      // Кошелек
+  amount            Json        // Сумма транзакции (объект)
+  total             Json        // Общая сумма (объект)
+  status            Int         // Статус транзакции
+  approvedAt        String?     // Дата одобрения (если есть)
+  expiredAt         String?     // Дата истечения срока (если есть)
+  createdAtExternal String      // Дата создания в IDEX
+  updatedAtExternal String      // Дата обновления в IDEX
+  extraData         Json        // Дополнительные данные в JSON формате
+  
+  cabinet           IdexCabinet @relation(fields: [cabinetId], references: [id], onDelete: Cascade)
+  cabinetId         Int
+  
+  createdAt         DateTime    @default(now())
+  updatedAt         DateTime    @updatedAt
+
+  @@unique([externalId, cabinetId])
+}

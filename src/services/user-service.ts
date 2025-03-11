@@ -559,4 +559,96 @@ export class UserService {
       return null;
     }
   }
+  
+  /**
+   * Получает общую статистику по пользователям
+   * @returns Объект со статистикой пользователей
+   */
+  static async getUserStats(): Promise<{ total: number; active: number; inactive: number }> {
+    try {
+      // Общее количество пользователей
+      const total = await prisma.user.count();
+      
+      // Количество активных пользователей
+      const active = await prisma.user.count({
+        where: {
+          isActive: true
+        }
+      });
+      
+      // Количество неактивных пользователей
+      const inactive = await prisma.user.count({
+        where: {
+          isActive: false
+        }
+      });
+      
+      return { total, active, inactive };
+    } catch (error) {
+      console.error('Ошибка при получении статистики пользователей:', error);
+      return { total: 0, active: 0, inactive: 0 };
+    }
+  }
+  
+  /**
+   * Получает список активных пользователей
+   * @returns Массив активных пользователей
+   */
+  static async getActiveUsers(): Promise<VirtualUser[]> {
+    try {
+      const users = await prisma.user.findMany({
+        where: {
+          isActive: true
+        },
+        include: {
+          telegramAccounts: true,
+          workSessions: {
+            orderBy: {
+              startTime: 'desc'
+            },
+            take: 1
+          }
+        },
+        orderBy: {
+          lastLoginAt: 'desc'
+        }
+      });
+      
+      return users;
+    } catch (error) {
+      console.error('Ошибка при получении списка активных пользователей:', error);
+      return [];
+    }
+  }
+  
+  /**
+   * Получает список неактивных пользователей
+   * @returns Массив неактивных пользователей
+   */
+  static async getInactiveUsers(): Promise<VirtualUser[]> {
+    try {
+      const users = await prisma.user.findMany({
+        where: {
+          isActive: false
+        },
+        include: {
+          telegramAccounts: true,
+          workSessions: {
+            orderBy: {
+              startTime: 'desc'
+            },
+            take: 1
+          }
+        },
+        orderBy: {
+          createdAt: 'desc'
+        }
+      });
+      
+      return users;
+    } catch (error) {
+      console.error('Ошибка при получении списка неактивных пользователей:', error);
+      return [];
+    }
+  }
 }

@@ -1,3 +1,5 @@
+import { Context } from 'telegraf';
+
 export interface P2PTransaction {
   id: string;
   orderNo: string;
@@ -81,7 +83,8 @@ export interface SystemSettings {
   reportWaitTime: number; // в минутах
 }
 
-export interface BotContext {
+// Расширяем тип Context для использования в боте
+export interface BotContext extends Context {
   session: {
     fileRequested?: boolean;
     userId?: number; // ID виртуального пользователя, если аутентифицирован
@@ -93,12 +96,55 @@ export interface BotContext {
     currentPage?: number; // Текущая страница для пагинации
     activeWorkSessionId?: number; // ID активной рабочей сессии
     
-    // Новые поля для поддержки админ-функциональности
+    // Данные для загрузки отчета
+    reportStep?: 'waiting_file' | 'waiting_period_start' | 'waiting_period_end' | 'waiting_exchange';
+    reportData?: {
+      filePath?: string;
+      fileName?: string;
+      periodStart?: string;
+      periodEnd?: string;
+      exchange?: string;
+    };
+    
+    // Поля для поддержки админ-функциональности
     waitingForAddUser?: boolean; // Ожидание имени для нового пользователя
     waitingForRename?: number; // ID пользователя для переименования
+    waitingForUserName?: boolean; // Ожидание ввода имени пользователя
+    creatingUser?: boolean; // Флаг создания нового пользователя
     userListPage?: number; // Текущая страница в списке пользователей
     selectedUserId?: number; // ID выбранного пользователя для управления
     dateRangeStart?: Date; // Начало периода для отчетов и статистики
     dateRangeEnd?: Date; // Конец периода для отчетов и статистики
+    settingsMode?: string | boolean; // Режим настроек
+    
+    // Данные для добавления пользователя
+    userStep?: 'waiting_name' | 'waiting_email' | 'waiting_role' | 'waiting_confirm';
+    userData?: {
+      name?: string;
+      email?: string;
+      role?: 'user' | 'admin';
+    };
+    
+    // Данные для IDEX кабинета
+    idexCabinetData?: {
+      idexId?: number;
+      login?: string;
+      password?: string;
+    };
+    idexCabinetStep?: 'waiting_idex_id' | 'waiting_login' | 'waiting_password';
   };
+  
+  match?: RegExpExecArray;
+  
+  // Методы из Context Telegraf
+  reply(text: string, extra?: any): Promise<any>;
+  replyWithMarkdown(text: string, extra?: any): Promise<any>;
+  replyWithHTML(text: string, extra?: any): Promise<any>;
+  replyWithPhoto(photo: any, extra?: any): Promise<any>;
+  replyWithDocument(document: any, extra?: any): Promise<any>;
+  deleteMessage(messageId?: number): Promise<any>;
+  editMessageText(text: string, extra?: any): Promise<any>;
+  editMessageReplyMarkup(markup: any): Promise<any>;
+  answerCallbackQuery(text?: string, extra?: any): Promise<boolean>;
+  scene: any;
 }

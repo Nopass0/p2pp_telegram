@@ -1,5 +1,5 @@
-import { Telegraf } from 'telegraf';
-import { BotContext } from '@/types';
+import { Telegraf, Markup } from 'telegraf';
+import type { BotContext } from '@/types';
 import { UserService } from '@/services/user-service';
 import { KeyboardBuilder } from '../components/keyboard';
 import { TransactionService } from '@/services/transaction-service';
@@ -32,6 +32,13 @@ export class AdminHandler {
       
       // Возврат к админ-панели
       bot.hears('🔙 Назад к админ-панели', this.backToAdminMenu);
+      
+      // Обработчики для меню статистики
+      bot.hears('📊 Общая статистика', this.showGeneralStats);
+      bot.hears('📈 Активные пользователи', this.showActiveUsers);
+      bot.hears('📉 Неактивные пользователи', this.showInactiveUsers);
+      bot.hears('💰 Транзакции', this.showAllTransactions);
+      bot.hears('🔙 Назад к управлению', this.showUserManagementMenu);
       
       // Обработка отмены операции
       bot.hears('❌ Отмена', this.cancelOperation);
@@ -144,9 +151,8 @@ export class AdminHandler {
       
       // Устанавливаем флаги
       ctx.session.isAdmin = true;
-      // Устанавливаем оба флага для обеспечения совместимости
-      ctx.session.waitingForAddUser = true;
       ctx.session.waitingForUserName = true;
+      ctx.session.creatingUser = true;
       
       console.log('Запуск процесса добавления пользователя');
       console.log('Текущая сессия (ПЕРЕД отправкой сообщения):', JSON.stringify(ctx.session));
@@ -180,28 +186,33 @@ export class AdminHandler {
     try {
       if (!ctx.session) ctx.session = {};
       
+      // Проверяем, есть ли текстовое сообщение
+      if (!ctx.message || !('text' in ctx.message)) {
+        return false;
+      }
+      
       // Выводим дополнительную информацию для отладки
-      console.log('processTextInput вызван с текстом:', ctx.message?.text);
+      console.log('processTextInput вызван с текстом:', ctx.message.text);
       console.log('Состояние сессии:', JSON.stringify(ctx.session));
       
-      // Проверяем оба возможных флага ожидания ввода имени
-      if ((ctx.session.waitingForAddUser || ctx.session.waitingForUserName) && ctx.message?.text) {
+      // Проверяем флаги ожидания ввода имени пользователя
+      if (ctx.session.waitingForUserName && ctx.message.text) {
         console.log('Обработка имени пользователя:', ctx.message.text);
         const name = ctx.message.text;
         
         // Если пользователь ввел "Отмена" или нажал кнопку отмены
         if (name === '❌ Отмена') {
-          // Очищаем оба возможных флага
-          delete ctx.session.waitingForAddUser;
+          // Очищаем все флаги
           delete ctx.session.waitingForUserName;
+          delete ctx.session.creatingUser;
           return await ctx.reply('Операция отменена.', KeyboardBuilder.adminUserManagementMenu());
         }
         
         console.log('Создание пользователя с именем:', name);
         
         // Сразу очищаем флаги ожидания имени, чтобы предотвратить повторную обработку
-        delete ctx.session.waitingForAddUser;
         delete ctx.session.waitingForUserName;
+        delete ctx.session.creatingUser;
         
         // Создаем нового пользователя
         try {
@@ -213,9 +224,13 @@ export class AdminHandler {
             return await ctx.reply(
               `✅ Пользователь "${user.name}" успешно создан!\n\n` +
               `🆔 ID: ${user.id}\n` +
-              `🔑 Код доступа: ${user.passCode}\n\n` +
+              `🔑 Код доступа: \`${user.passCode}\`\n\n` +
+              `Этот код нужно передать пользователю для привязки телеграм-аккаунта.\n\n` +
               `Выберите дальнейшее действие:`,
-              KeyboardBuilder.userActionsAfterCreateKeyboard(user.id)
+              {
+                parse_mode: 'Markdown',
+                ...KeyboardBuilder.userActionsAfterCreateKeyboard(user.id)
+              }
             );
           } else {
             console.error('Ошибка при создании пользователя: user равен null');
@@ -740,6 +755,167 @@ export class AdminHandler {
     } catch (error) {
       console.error('Ошибка при показе фильтра по датам для транзакций пользователя:', error);
       await ctx.reply('❌ Произошла ошибка при показе фильтра по датам для транзакций пользователя.', KeyboardBuilder.adminUserManagementMenu());
+    }
+  }
+
+  /**
+   * Показывает общую статистику пользователей
+   */
+  private static async showGeneralStats(ctx: BotContext) {
+    try {
+      if (!ctx.session) ctx.session = {};
+      ctx.session.isAdmin = true;
+      
+      // Получаем статистику по пользователям
+      const userStats = await UserService.getUserStats();
+      const txStats = await TransactionService.getTransactionStats();
+      
+      // Формируем сообщение со статистикой
+      let message = '📊 *Общая статистика*\n\n';
+      
+      message += `👥 *Пользователей всего:* ${userStats.total}\n`;
+      message += `✅ *Активных пользователей:* ${userStats.active}\n`;
+      message += `❌ *Неактивных пользователей:* ${userStats.inactive}\n\n`;
+      
+      if (txStats) {
+        message += `💰 *Транзакций всего:* ${txStats.total}\n`;
+        message += `💸 *Сумма всех транзакций:* ${txStats.totalAmount.toFixed(2)} USD\n`;
+        message += `📅 *Транзакций за последние 7 дней:* ${txStats.lastWeek}\n`;
+        message += `📅 *Транзакций за последние 30 дней:* ${txStats.lastMonth}\n`;
+      } else {
+        message += '💰 *Транзакций:* нет данных\n';
+      }
+      
+      // Отправляем сообщение с клавиатурой
+      await ctx.reply(message, {
+        parse_mode: 'Markdown',
+        ...KeyboardBuilder.adminStatsMenu()
+      });
+    } catch (error) {
+      console.error('Ошибка при получении общей статистики:', error);
+      await ctx.reply('❌ Произошла ошибка при получении статистики.', KeyboardBuilder.adminStatsMenu());
+    }
+  }
+  
+  /**
+   * Показывает список активных пользователей
+   */
+  private static async showActiveUsers(ctx: BotContext) {
+    try {
+      if (!ctx.session) ctx.session = {};
+      ctx.session.isAdmin = true;
+      
+      // Получаем список активных пользователей
+      const users = await UserService.getActiveUsers();
+      
+      // Формируем сообщение со списком
+      let message = '📈 *Активные пользователи*\n\n';
+      
+      if (users && users.length > 0) {
+        users.forEach((user, index) => {
+          message += `${index + 1}. *${user.name}* (ID: ${user.id})\n`;
+          if (user.lastLoginAt) {
+            const lastLogin = new Date(user.lastLoginAt);
+            message += `   📅 Последний вход: ${lastLogin.toLocaleDateString('ru-RU')}\n`;
+          }
+          message += '\n';
+        });
+      } else {
+        message += '❌ Активных пользователей не найдено.\n';
+      }
+      
+      // Отправляем сообщение с клавиатурой
+      await ctx.reply(message, {
+        parse_mode: 'Markdown',
+        ...KeyboardBuilder.adminStatsMenu()
+      });
+    } catch (error) {
+      console.error('Ошибка при получении списка активных пользователей:', error);
+      await ctx.reply('❌ Произошла ошибка при получении списка активных пользователей.', KeyboardBuilder.adminStatsMenu());
+    }
+  }
+  
+  /**
+   * Показывает список неактивных пользователей
+   */
+  private static async showInactiveUsers(ctx: BotContext) {
+    try {
+      if (!ctx.session) ctx.session = {};
+      ctx.session.isAdmin = true;
+      
+      // Получаем список неактивных пользователей
+      const users = await UserService.getInactiveUsers();
+      
+      // Формируем сообщение со списком
+      let message = '📉 *Неактивные пользователи*\n\n';
+      
+      if (users && users.length > 0) {
+        users.forEach((user, index) => {
+          message += `${index + 1}. *${user.name}* (ID: ${user.id})\n`;
+          if (user.createdAt) {
+            const createdAt = new Date(user.createdAt);
+            message += `   📅 Создан: ${createdAt.toLocaleDateString('ru-RU')}\n`;
+          }
+          message += '\n';
+        });
+      } else {
+        message += '❌ Неактивных пользователей не найдено.\n';
+      }
+      
+      // Отправляем сообщение с клавиатурой
+      await ctx.reply(message, {
+        parse_mode: 'Markdown',
+        ...KeyboardBuilder.adminStatsMenu()
+      });
+    } catch (error) {
+      console.error('Ошибка при получении списка неактивных пользователей:', error);
+      await ctx.reply('❌ Произошла ошибка при получении списка неактивных пользователей.', KeyboardBuilder.adminStatsMenu());
+    }
+  }
+  
+  /**
+   * Показывает общую статистику по транзакциям
+   */
+  private static async showAllTransactions(ctx: BotContext) {
+    try {
+      // Получаем статистику транзакций
+      const txStats = await TransactionService.getTransactionStats();
+      
+      // Получаем последние 10 транзакций
+      const transactions = await TransactionService.getTransactions({ limit: 10 });
+      
+      let message = '*📊 Статистика транзакций*\n\n';
+      
+      if (txStats) {
+        message += `*Всего транзакций:* ${txStats.total}\n`;
+        message += `*Общая сумма:* ${txStats.totalAmount.toFixed(2)} USD\n`;
+        message += `*За последние 7 дней:* ${txStats.lastWeek} транзакций\n`;
+        message += `*За последние 30 дней:* ${txStats.lastMonth} транзакций\n\n`;
+      }
+      
+      message += '*Последние транзакции:*\n\n';
+      
+      if (transactions && transactions.length > 0) {
+        transactions.forEach((tx, index) => {
+          const date = tx.createdAt ? new Date(tx.createdAt) : new Date();
+          message += `${index + 1}. *${tx.amount.toFixed(2)} USD* (${date.toLocaleDateString('ru-RU')})\n`;
+          if (tx.user) {
+            message += `   👤 Пользователь: ${tx.user.name}\n`;
+          }
+          message += '\n';
+        });
+      } else {
+        message += '❌ Транзакций не найдено.\n';
+      }
+      
+      // Отправляем сообщение с клавиатурой
+      await ctx.reply(message, {
+        parse_mode: 'Markdown',
+        ...KeyboardBuilder.adminStatsMenu()
+      });
+    } catch (error) {
+      console.error('Ошибка при получении статистики транзакций:', error);
+      await ctx.reply('❌ Произошла ошибка при получении статистики транзакций.', KeyboardBuilder.adminStatsMenu());
     }
   }
 }

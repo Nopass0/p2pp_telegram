@@ -445,4 +445,123 @@ export class TransactionService {
       };
     }
   }
+  
+  /**
+   * Получает статистику по транзакциям
+   * @returns Объект со статистикой транзакций
+   */
+  static async getTransactionStats(): Promise<{
+    total: number;
+    totalAmount: number;
+    lastWeek: number;
+    lastMonth: number;
+  }> {
+    try {
+      // Получаем общее количество транзакций
+      const total = await prisma.transaction.count();
+      
+      // Получаем общую сумму всех транзакций
+      const transactions = await prisma.transaction.findMany();
+      const totalAmount = transactions.reduce((sum, tx) => sum + tx.amount, 0);
+      
+      // Получаем количество транзакций за последние 7 дней
+      const lastWeekDate = new Date();
+      lastWeekDate.setDate(lastWeekDate.getDate() - 7);
+      
+      const lastWeek = await prisma.transaction.count({
+        where: {
+          createdAt: {
+            gte: lastWeekDate
+          }
+        }
+      });
+      
+      // Получаем количество транзакций за последние 30 дней
+      const lastMonthDate = new Date();
+      lastMonthDate.setDate(lastMonthDate.getDate() - 30);
+      
+      const lastMonth = await prisma.transaction.count({
+        where: {
+          createdAt: {
+            gte: lastMonthDate
+          }
+        }
+      });
+      
+      return {
+        total,
+        totalAmount,
+        lastWeek,
+        lastMonth
+      };
+    } catch (error) {
+      console.error('Ошибка при получении статистики транзакций:', error);
+      return {
+        total: 0,
+        totalAmount: 0,
+        lastWeek: 0,
+        lastMonth: 0
+      };
+    }
+  }
+  
+  /**
+   * Получает список транзакций с фильтрацией
+   * @param options Опции фильтрации
+   * @returns Массив транзакций
+   */
+  static async getTransactions(options: {
+    userId?: number;
+    startDate?: Date;
+    endDate?: Date;
+    limit?: number;
+    offset?: number;
+  } = {}): Promise<TransactionDB[]> {
+    try {
+      const {
+        userId,
+        startDate,
+        endDate,
+        limit = 10,
+        offset = 0
+      } = options;
+      
+      // Формируем условия фильтрации
+      const whereClause: any = {};
+      
+      if (userId) {
+        whereClause.userId = userId;
+      }
+      
+      if (startDate || endDate) {
+        whereClause.createdAt = {};
+        
+        if (startDate) {
+          whereClause.createdAt.gte = startDate;
+        }
+        
+        if (endDate) {
+          whereClause.createdAt.lte = endDate;
+        }
+      }
+      
+      // Получаем транзакции с пагинацией
+      const transactions = await prisma.transaction.findMany({
+        where: whereClause,
+        include: {
+          user: true
+        },
+        orderBy: {
+          createdAt: 'desc'
+        },
+        skip: offset,
+        take: limit
+      });
+      
+      return transactions;
+    } catch (error) {
+      console.error('Ошибка при получении списка транзакций:', error);
+      return [];
+    }
+  }
 }

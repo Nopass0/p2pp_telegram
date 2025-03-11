@@ -1569,3 +1569,271 @@ function formatDuration(duration: number) {
   
   return `${hours} ч ${minutes} мин ${seconds} сек`;
 }
+                  month: '2-digit', 
+                  year: 'numeric',
+                  hour: '2-digit',
+                  minute: '2-digit'
+                })
+              );
+              filterInfo = `с ${startDate} по ${endDate}`;
+            }
+        }
+        
+        if (filterInfo) {
+          message += `\n📆 Транзакции ${filterInfo}`;
+        }
+      } else {
+        message += `\n📆 Транзакции все`;
+      }
+      
+      if (result.transactions.length === 0) {
+        message += '\n\n❌ Транзакции не найдены';
+      }
+      
+      // Добавляем информацию о каждой транзакции
+      if (result.transactions.length > 0) {
+        message += '\n\n';
+        result.transactions.forEach((tx, index) => {
+          // Парсим объект суммы из JSON
+          let amountStr = 'Н/Д';
+          let totalUsdtStr = '';
+          
+          try {
+            // Обработка поля amount (RUB)
+            if (typeof tx.amount === 'string') {
+              try {
+                const amountObj = JSON.parse(tx.amount);
+                if (amountObj.trader && amountObj.trader['643']) {
+                  amountStr = `${amountObj.trader['643']} RUB`;
+                }
+              } catch (e) {
+                amountStr = 'Ошибка парсинга';
+              }
+            } else if (tx.amount && typeof tx.amount === 'object') {
+              if (tx.amount.trader && tx.amount.trader['643']) {
+                amountStr = `${tx.amount.trader['643']} RUB`;
+              }
+            }
+            
+            // Обработка поля total (USDT)
+            if (typeof tx.total === 'string') {
+              try {
+                const totalObj = JSON.parse(tx.total);
+                if (totalObj.trader && totalObj.trader['000001']) {
+                  totalUsdtStr = `${totalObj.trader['000001']} USDT`;
+                }
+              } catch (e) {
+                totalUsdtStr = '';
+              }
+            } else if (tx.total && typeof tx.total === 'object') {
+              if (tx.total.trader && tx.total.trader['000001']) {
+                totalUsdtStr = `${tx.total.trader['000001']} USDT`;
+              }
+            }
+          } catch (e) {
+            console.error('Ошибка парсинга сумм:', e);
+          }
+
+          // Форматируем дату
+          let dateStr = 'Н/Д';
+          try {
+            if (tx.createdAtExternal) {
+              dateStr = new Date(tx.createdAtExternal).toLocaleString('ru-RU', {
+                day: '2-digit',
+                month: '2-digit',
+                year: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit'
+              });
+            }
+          } catch (e) {
+            console.error('Ошибка форматирования даты:', e);
+          }
+
+          message += `
+*${index + 1}.* ID: \`${tx.externalId || 'Н/Д'}\`
+📅 Дата: \`${dateStr}\`
+💰 Сумма: \`${amountStr}\`${totalUsdtStr ? `\n💵 USDT: \`${totalUsdtStr}\`` : ''}
+✅ Статус: \`${tx.status || 'Н/Д'}\`
+          `;
+        });
+      }
+      
+      await ctx.editMessageText(message, { 
+        parse_mode: 'Markdown',
+        reply_markup: KeyboardBuilder.idexTransactionsPaginationKeyboard(
+          cabinetId, 
+          page, 
+          totalPages,
+          timeFilter
+        ) 
+      });
+    } catch (error) {
+      console.error('Ошибка при показе транзакций IDEX кабинета:', error);
+      await ctx.reply(
+        'Произошла ошибка при получении транзакций IDEX кабинета. Пожалуйста, попробуйте позже.',
+        KeyboardBuilder.idexMenu()
+      );
+    }
+  }
+
+  /**
+   * Обработчик синхронизации конкретного IDEX кабинета
+   */
+  static async handleSyncIdexCabinet(ctx: BotContext, cabinetId: number) {
+    try {
+      // Проверяем, что пользователь является администратором
+      if (!ctx.session?.isAdmin) {
+        await ctx.reply('У вас нет доступа к этому разделу. Требуются права администратора.');
+        return;
+      }
+
+      // Отправляем сообщение о начале синхронизации
+      await ctx.editMessageText('🔄 Начата синхронизация кабинета IDEX. Этот процесс может занять некоторое время...');
+      
+      // Запускаем синхронизацию
+      await IDEXService.syncCabinetTransactionsById(cabinetId);
+      
+      // Отправляем сообщение о завершении синхронизации и показываем информацию о кабинете
+      await this.showIdexCabinetActions(ctx, cabinetId);
+    } catch (error) {
+      console.error('Ошибка при синхронизации IDEX кабинета:', error);
+      await ctx.reply('❌ Произошла ошибка при синхронизации IDEX кабинета. Пожалуйста, попробуйте позже.',
+        KeyboardBuilder.idexMenu()
+      );
+    }
+  }
+
+  /**
+   * Обработчик для отображения меню фильтрации транзакций IDEX по времени
+   * @param ctx Контекст бота
+   */
+  static async handleIdexTimeFilter(ctx: BotContext): Promise<void> {
+    try {
+      // Получаем ID кабинета из callback данных
+      const cabinetId = parseInt(ctx.match![1]);
+      
+      await ctx.editMessageText(
+        '📆 Выберите временной период для фильтрации транзакций:',
+        { reply_markup: KeyboardBuilder.idexTimeFilterKeyboard(cabinetId) }
+      );
+    } catch (error) {
+      console.error('Ошибка при отображении меню фильтрации транзакций:', error);
+      await ctx.reply('❌ Произошла ошибка при отображении меню фильтрации транзакций.');
+    }
+  }
+
+  /**
+   * Обработчик для запроса пользовательского диапазона дат
+   * @param ctx Контекст бота
+   */
+  static async handleCustomDateRangeRequest(ctx: BotContext): Promise<void> {
+    try {
+      // Получаем ID кабинета из callback данных
+      const cabinetId = parseInt(ctx.match![1]);
+      
+      // Сохраняем ID кабинета в сессию для последующего использования
+      if (!ctx.session) ctx.session = {};
+      ctx.session.currentIdexCabinetId = cabinetId;
+      ctx.session.awaitingCustomDateRange = true;
+      
+      await ctx.editMessageText(
+        '📆 Введите начальную и конечную дату в формате:\n\n' +
+        'ДД.ММ.ГГГГ ЧЧ:ММ - ДД.ММ.ГГГГ ЧЧ:ММ\n\n' +
+        'Пример: 01.01.2023 00:00 - 02.01.2023 23:59',
+        { reply_markup: KeyboardBuilder.cancelInputKeyboard(`back_to_idex_cabinet_${cabinetId}`) }
+      );
+    } catch (error) {
+      console.error('Ошибка при запросе пользовательского диапазона дат:', error);
+      await ctx.reply('❌ Произошла ошибка при запросе пользовательского диапазона дат.');
+    }
+  }
+
+  /**
+   * Обработчик для просмотра деталей IDEX кабинета
+   * @param ctx Контекст бота
+   */
+  static async handleViewIdexCabinetDetails(ctx: BotContext): Promise<void> {
+    try {
+      // Получаем ID кабинета из callback данных
+      const cabinetId = parseInt(ctx.match![1]);
+      
+      // Получаем детали кабинета напрямую через статический метод
+      const cabinetDetails = await IDEXService.getCabinetDetails(cabinetId);
+      
+      if (!cabinetDetails || !cabinetDetails.cabinet) {
+        await ctx.editMessageText('❌ Кабинет не найден.', { 
+          reply_markup: KeyboardBuilder.idexCabinetKeyboard(1, 1) 
+        });
+        return;
+      }
+      
+      // Форматируем текст сообщения с деталями кабинета
+      const message = `
+📱 *Детали IDEX кабинета*
+      
+*ID*: \`${cabinetDetails.cabinet.id || 'Н/Д'}\`
+*Логин:* \`${cabinetDetails.cabinet.login || 'Н/Д'}\`
+*Название:* \`${cabinetDetails.cabinet.name || 'Не указано'}\`
+*Всего транзакций:* \`${cabinetDetails.stats.totalTransactions || 0}\`
+*Последняя транзакция:* \`${cabinetDetails.stats.lastTransactionDate ? new Date(cabinetDetails.stats.lastTransactionDate).toLocaleString('ru-RU') : 'Нет данных'}\`
+*Дата создания:* \`${cabinetDetails.cabinet.createdAt ? new Date(cabinetDetails.cabinet.createdAt).toLocaleString('ru-RU') : 'Н/Д'}\`
+*Дата последнего обновления:* \`${cabinetDetails.cabinet.updatedAt ? new Date(cabinetDetails.cabinet.updatedAt).toLocaleString('ru-RU') : 'Н/Д'}\`
+      `;
+      
+      await ctx.editMessageText(message, { 
+        parse_mode: 'Markdown',
+        reply_markup: KeyboardBuilder.idexCabinetActionsKeyboard(cabinetId) 
+      });
+    } catch (error) {
+      console.error('Ошибка при просмотре деталей кабинета:', error);
+      await ctx.reply('❌ Произошла ошибка при просмотре деталей кабинета.');
+    }
+  }
+
+  /**
+   * Обработчик для возврата к кабинету IDEX из просмотра транзакций
+   * @param ctx Контекст бота
+   */
+  static async handleBackToIdexCabinet(ctx: BotContext): Promise<void> {
+    try {
+      // Получаем ID кабинета из callback данных
+      const cabinetId = parseInt(ctx.match![1]);
+      
+      // Получаем кабинет напрямую через статический метод
+      const cabinet = await IDEXService.getCabinetById(cabinetId);
+      
+      if (!cabinet) {
+        await ctx.editMessageText('❌ Кабинет не найден.', { 
+          reply_markup: KeyboardBuilder.idexCabinetKeyboard(1, 1) 
+        });
+        return;
+      }
+      
+      // Форматируем сообщение с информацией о кабинете
+      const message = `
+📱 *IDEX Кабинет*
+      
+*ID*: \`${cabinet.id}\`
+*Логин:* \`${cabinet.login}\`
+*Название:* \`${cabinet.name || 'Не указано'}\`
+      `;
+      
+      await ctx.editMessageText(message, { 
+        parse_mode: 'Markdown',
+        reply_markup: KeyboardBuilder.idexCabinetActionsKeyboard(cabinetId) 
+      });
+    } catch (error) {
+      console.error('Ошибка при возврате к кабинету:', error);
+      await ctx.reply('❌ Произошла ошибка при возврате к кабинету.');
+    }
+  }
+}
+
+function formatDuration(duration: number) {
+  const hours = Math.floor(duration / 3600);
+  const minutes = Math.floor((duration % 3600) / 60);
+  const seconds = duration % 60;
+  
+  return `${hours} ч ${minutes} мин ${seconds} сек`;
+}
