@@ -500,7 +500,7 @@ function formatTransactionDetails(match: any): string {
     `👤 Контрагент: ${tx.counterparty || 'Н/Д'}`,
     `📊 Статус: ${tx.status}`,
     '',
-    `💵 Прибыль: ${match.grossProfit.toFixed(2)} руб. (${match.profitPercentage.toFixed(2)}%)`,
+    `${Number(match.grossProfit) < 0 ? '🔴 ' : '🟢 ' }💵 Прибыль: ${match.grossProfit.toFixed(2)} USDT. (${match.profitPercentage.toFixed(2)}%)`,
   ].join('\n');
 }
 
