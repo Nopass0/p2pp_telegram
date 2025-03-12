@@ -1,7 +1,7 @@
 import { Telegraf } from 'telegraf';
 import dayjs from 'dayjs';
 import { KeyboardBuilder } from '../components/keyboard';
-import { matchTransactions, getUserMatches, getAllMatches, getUsersWithMatchStats } from '../../services/matching-service';
+import { matchTransactions, getUserMatches, getAllMatches, getUsersWithMatchStats, getUserById } from '../../services/matching-service';
 import type { BotContext } from '@/types';
 
 // Хранилище для диапазонов дат (для каждого пользователя)
@@ -651,6 +651,19 @@ async function showUsersWithMatches(ctx: BotContext, startDate: string, endDate:
  */
 async function showUserMatches(ctx: BotContext, userId: number, startDate: string, endDate: string, page = 1) {
   try {
+    // Сначала получаем информацию о пользователе
+    const user = await getUserById(userId);
+    
+    if (!user) {
+      await ctx.reply(
+        'Пользователь не найден.',
+        {
+          reply_markup: KeyboardBuilder.backToUsersList().reply_markup
+        }
+      );
+      return;
+    }
+    
     const result = await getUserMatches(userId, startDate, endDate, page);
     
     // Форматируем даты для отображения
@@ -659,16 +672,13 @@ async function showUserMatches(ctx: BotContext, userId: number, startDate: strin
     
     if (result.matches.length === 0) {
       await ctx.reply(
-        `У пользователя нет сопоставленных транзакций за период с ${startDateStr} по ${endDateStr}.`,
+        `У пользователя ${user.name} нет сопоставленных транзакций за период с ${startDateStr} по ${endDateStr}.`,
         {
           reply_markup: KeyboardBuilder.backToUsersList().reply_markup
         }
       );
       return;
     }
-    
-    // Получаем информацию о пользователе
-    const user = result.matches[0].transaction.user;
     
     // Показываем статистику пользователя
     await ctx.reply(

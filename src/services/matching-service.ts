@@ -16,6 +16,20 @@ export interface MatchStats {
 }
 
 /**
+ * Функция для получения информации о пользователе по ID
+ */
+export async function getUserById(userId: number) {
+  try {
+    return await prisma.user.findUnique({
+      where: { id: userId }
+    });
+  } catch (error) {
+    console.error('Ошибка при получении информации о пользователе:', error);
+    return null;
+  }
+}
+
+/**
  * Функция для расчета разницы во времени в минутах
  */
 function getTimeDifferenceInMinutes(dateStr1: string, dateStr2: string): number {
@@ -42,10 +56,10 @@ function calculateMatchMetrics(transaction: any, idexTransaction: any): {
     // Проверяем, является ли total строкой JSON
     if (typeof idexTransaction.total === 'string') {
       const totalJson = JSON.parse(idexTransaction.total);
-      totalUsdt = parseFloat(totalJson.trader?.["000001"] || 0);
+      totalUsdt = parseFloat(totalJson.trader?.[643] || 0);
     } else {
       // Если total уже является объектом
-      totalUsdt = parseFloat(idexTransaction.total.trader?.["000001"] || 0);
+      totalUsdt = parseFloat(idexTransaction.total.trader?.[643] || 0);
     }
   } catch (error) {
     console.error('Ошибка при парсинге JSON поля total:', error);
