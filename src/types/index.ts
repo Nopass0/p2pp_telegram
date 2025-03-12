@@ -95,6 +95,8 @@ export interface BotContext extends Context {
     tempData?: any; // Временные данные для многошаговых операций
     currentPage?: number; // Текущая страница для пагинации
     activeWorkSessionId?: number; // ID активной рабочей сессии
+    matchAction?: string; // Новое поле для действий мэтчинга
+    viewingUserId?: number; // Новое поле для хранения ID просматриваемого пользователя
     
     // Данные для загрузки отчета
     reportStep?: 'waiting_file' | 'waiting_period_start' | 'waiting_period_end' | 'waiting_exchange';

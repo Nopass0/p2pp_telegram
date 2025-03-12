@@ -80,6 +80,8 @@ model Transaction {
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
 
+  matches          Match[]         // Связь с матчами
+
   @@unique([externalId, userId])
 }
 
@@ -151,5 +153,25 @@ model IdexTransaction {
   createdAt         DateTime    @default(now())
   updatedAt         DateTime    @updatedAt
 
+  matches          Match[]         // Связь с матчами
+
   @@unique([externalId, cabinetId])
+}
+
+
+model Match {
+  id               Int             @id @default(autoincrement())
+  idexTransaction  IdexTransaction @relation(fields: [idexTransactionId], references: [id])
+  idexTransactionId Int
+  transaction      Transaction     @relation(fields: [transactionId], references: [id])
+  transactionId    Int
+  timeDifference   Int             // Разница во времени в секундах
+  grossExpense     Float           // Расчетные расходы для этого матча
+  grossIncome      Float           // Расчетный доход для этого матча  
+  grossProfit      Float           // Расчетная прибыль для этого матча
+  profitPercentage Float           // Расчетный процент прибыли
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
+
+  @@unique([idexTransactionId, transactionId])
 }

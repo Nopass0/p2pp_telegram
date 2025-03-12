@@ -15,6 +15,20 @@ export class KeyboardBuilder {
       [{ text: '📋 Моя статистика' }, { text: '❓ Помощь' }]
     ]).resize();
   }
+
+    // Кнопка возврата к списку пользователей
+    static backToUsersList() {
+      return Markup.inlineKeyboard([
+        Markup.button.callback('🔙 Назад к списку пользователей', 'back_to_users_list')
+      ]);
+    }
+  
+    // Кнопка возврата к меню мэтчей
+    static backToMatchMenu() {
+      return Markup.inlineKeyboard([
+        Markup.button.callback('🔙 Назад к меню мэтчей', 'back_to_match_menu')
+      ]);
+    }
   
   /**
    * Создает главное меню администратора
@@ -23,7 +37,8 @@ export class KeyboardBuilder {
     return Markup.keyboard([
       [{ text: '👥 Управление пользователями' }, { text: '📊 Статистика' }],
       [{ text: '📱 IDEX' }, { text: '🖥️Bybit' }],
-      [{ text: '⚙️ Настройки' }, { text: '⚠️ Уведомления' }],
+      [{ text: '⚙️ Настройки' }, { text: '⚠️ Уведомления' }, { text: '📋 Меню мэтчей'}],
+    
       [{ text: '🔙 Обычный режим' }, { text: '❓ Помощь' }]
     ]).resize();
   }
@@ -742,6 +757,110 @@ export class KeyboardBuilder {
       ]
     ]);
   }
+
+  // Список пользователей с кнопками просмотра
+  static userListWithViewButtons(users: any[]) {
+    return Markup.inlineKeyboard(
+      users.map(user => [
+        Markup.button.callback(
+          `${user.name} (${user.matchCount} мэтчей)`, 
+          `view_user_matches_${user.id}`
+        )
+      ])
+    );  
+  }
+
+    // Меню мэтчей для админа
+    static matchMenu() {
+      return Markup.keyboard([
+        ['🔄 Замэтчить период', '📋 Список мэтчей'],
+        ['👥 Мэтчи по пользователям'],
+        ['🔙 Назад в меню админа']
+      ]).resize();
+    }
+
+    // Меню ввода диапазона дат
+    static dateRangeInputMenu() {
+      return Markup.keyboard([
+        ['🔙 Назад к меню мэтчей']
+      ]).resize();
+    }
+
+    // Пагинация матчей пользователя
+    static userMatchesPagination(currentPage: number, totalPages: number) {
+      const buttons = [];
+      
+      // Кнопка предыдущей страницы, если не на первой странице
+      if (currentPage > 1) {
+        buttons.push(Markup.button.callback('◀️ Назад', `user_matches_page_${currentPage - 1}`));
+      }
+      
+      // Индикатор текущей страницы
+      buttons.push(Markup.button.callback(`${currentPage} из ${totalPages}`, 'noop'));
+      
+      // Кнопка следующей страницы, если не на последней странице
+      if (currentPage < totalPages) {
+        buttons.push(Markup.button.callback('▶️ Вперед', `user_matches_page_${currentPage + 1}`));
+      }
+      
+      return Markup.inlineKeyboard([buttons]);
+    }
+
+    // Пагинация всех матчей
+    static allMatchesPagination(currentPage: number, totalPages: number) {
+      const buttons = [];
+      
+      // Кнопка предыдущей страницы, если не на первой странице
+      if (currentPage > 1) {
+        buttons.push(Markup.button.callback('◀️ Назад', `all_matches_page_${currentPage - 1}`));
+      }
+      
+      // Индикатор текущей страницы
+      buttons.push(Markup.button.callback(`${currentPage} из ${totalPages}`, 'noop'));
+      
+      // Кнопка следующей страницы, если не на последней странице
+      if (currentPage < totalPages) {
+        buttons.push(Markup.button.callback('▶️ Вперед', `all_matches_page_${currentPage + 1}`));
+      }
+      
+      return Markup.inlineKeyboard([buttons]);
+    }
+
+    // Пагинация списка пользователей
+    static usersListPagination(currentPage: number, totalPages: number) {
+      const buttons = [];
+      
+      // Кнопка предыдущей страницы, если не на первой странице
+      if (currentPage > 1) {
+        buttons.push(Markup.button.callback('◀️ Назад', `users_list_page_${currentPage - 1}`));
+      }
+      
+      // Индикатор текущей страницы
+      buttons.push(Markup.button.callback(`${currentPage} из ${totalPages}`, 'noop'));
+      
+      // Кнопка следующей страницы, если не на последней странице
+      if (currentPage < totalPages) {
+        buttons.push(Markup.button.callback('▶️ Вперед', `users_list_page_${currentPage + 1}`));
+      }
+      
+      return Markup.inlineKeyboard([buttons]);
+    }
+
+  // Меню отчетов (если этого не было в оригинале)
+  static reportsMenu() {
+    return Markup.keyboard([
+      ['📂 Все отчеты', '📅 Отчеты за период'],
+      ['🔙 Назад в меню админа']
+    ]).resize();
+  }
+
+  // Меню статистики (если этого не было в оригинале)
+  static statsMenu() {
+    return Markup.keyboard([
+      ['📈 Общая статистика', '👤 Статистика по пользователям'],
+        ['🔙 Назад в меню админа']
+      ]).resize();
+    }
   
   /**
    * Создает клавиатуру для меню статистики пользователей

@@ -14,6 +14,7 @@ import { ReportHandler } from './handlers/report-handler';
 import { WorkSessionHandler } from './handlers/work-session-handler';
 import { MenuHandler } from './handlers/menu-handler';
 import { AdminHandler } from './handlers/admin-handler';
+import { MatchHandler } from './handlers/match-handler';
 
 // Create and configure bot
 export function createBot(token: string) {
@@ -35,6 +36,7 @@ export function createBot(token: string) {
   WorkSessionHandler.init(bot);
   MenuHandler.init(bot);
   AdminHandler.init(bot);
+  MatchHandler.init(bot);
 
   // Command handlers
   bot.start(async (ctx) => {
