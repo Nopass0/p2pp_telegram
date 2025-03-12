@@ -1,3 +1,4 @@
+import { prisma } from '@/services/prisma';
 import { Markup } from 'telegraf';
 
 /**
@@ -74,7 +75,7 @@ export class KeyboardBuilder {
     }
     
     // Текущая страница
-    paginationButtons.push(Markup.button.callback(`${currentPage} / ${totalPages}`, 'noop'));
+    paginationButtons.push(Markup.button.callback(`${currentPage} из ${totalPages}`, 'noop'));
     
     // Кнопка на следующую страницу
     if (currentPage < totalPages) {
@@ -147,7 +148,7 @@ export class KeyboardBuilder {
     }
     
     // Текущая страница
-    paginationButtons.push(Markup.button.callback(`${currentPage} / ${totalPages}`, 'noop'));
+    paginationButtons.push(Markup.button.callback(`${currentPage} из ${totalPages}`, 'noop'));
     
     // Кнопка на следующую страницу
     if (currentPage < totalPages) {
@@ -274,7 +275,7 @@ export class KeyboardBuilder {
     }
     
     // Отображаем текущую страницу из общего количества
-    paginationButtons.push(Markup.button.callback(`${currentPage} / ${totalPages}`, 'current_page'));
+    paginationButtons.push(Markup.button.callback(`${currentPage} из ${totalPages}`, 'current_page'));
     
     // Кнопка следующей страницы
     if (currentPage < totalPages) {
@@ -300,26 +301,7 @@ export class KeyboardBuilder {
     return Markup.inlineKeyboard(allButtons);
   }
   
-  /**
-   * Создает клавиатуру для управления конкретным пользователем
-   */
-  static userDetailsKeyboard(userId: number, isActive: boolean = true): any {
-    const buttons = [
-      [
-        Markup.button.callback(`${isActive ? '🚫 Заблокировать' : '✅ Активировать'}`, `toggle_user_status_${userId}`),
-        Markup.button.callback('🗑️ Удалить', `delete_user_confirm_${userId}`)
-      ],
-      [
-        Markup.button.callback('📊 Подробная статистика', `user_stats_${userId}`),
-        Markup.button.callback('📜 Все транзакции', `user_transactions_${userId}`)
-      ],
-      [
-        Markup.button.callback('🔙 Назад к списку', 'admin_user_list')
-      ]
-    ];
-    
-    return Markup.inlineKeyboard(buttons);
-  }
+
   
   /**
    * Создает клавиатуру для пагинации транзакций пользователя
@@ -499,7 +481,7 @@ export class KeyboardBuilder {
     
     // Отображаем текущую страницу из общего количества
     navigationRow.push(
-      Markup.button.callback(`${currentPage} / ${totalPages}`, 'current_page')
+      Markup.button.callback(`${currentPage} из ${totalPages}`, 'noop')
     );
     
     // Кнопка следующей страницы
@@ -521,15 +503,21 @@ export class KeyboardBuilder {
     
     // Добавляем кнопку для выбора временного фильтра
     buttons.push([
-      Markup.button.callback('📆 Фильтр по времени', `idex_tx_filter_${cabinetId}`)
+      {
+        text: '📆 Фильтр по времени',
+        callback_data: `idex_tx_filter_${cabinetId}`
+      }
     ]);
     
     // Кнопка для возврата к деталям кабинета
     buttons.push([
-      Markup.button.callback('◀️ Назад к кабинету', `idex_cabinet_details_${cabinetId}`)
+      {
+        text: '◀️ Назад к кабинету',
+        callback_data: `idex_cabinet_details_${cabinetId}`
+      }
     ]);
     
-    return Markup.inlineKeyboard(buttons);
+    return { inline_keyboard: buttons };
   }
   
   /**
@@ -554,7 +542,7 @@ export class KeyboardBuilder {
    */
   static cancelInputKeyboard(cancelAction: string): InlineKeyboardMarkup {
     return Markup.inlineKeyboard([
-      [Markup.button.callback('❌ Отменить', cancelAction)]
+      [Markup.button.callback('❌ Отмена', cancelAction)]
     ]);
   }
 
@@ -664,47 +652,7 @@ export class KeyboardBuilder {
     ]).resize();
   }
   
-  /**
-   * Создает inline клавиатуру для пагинации списка пользователей
-   * @param currentPage Текущая страница
-   * @param totalPages Общее количество страниц
-   * @param pageSize Размер страницы (элементов на странице)
-   * @returns Объект inline клавиатуры
-   */
-  static userListPaginationKeyboard(currentPage: number, totalPages: number, pageSize: number = 5) {
-    const buttons = [];
-    
-    // Добавляем строку с кнопками пагинации
-    const paginationRow = [];
-    
-    // Кнопка "Предыдущая страница"
-    if (currentPage > 1) {
-      paginationRow.push(
-        Markup.button.callback('◀️', `user_list_page_${currentPage - 1}`)
-      );
-    }
-    
-    // Кнопка текущей страницы
-    paginationRow.push(
-      Markup.button.callback(`${currentPage} из ${totalPages}`, 'page_info_do_nothing')
-    );
-    
-    // Кнопка "Следующая страница"
-    if (currentPage < totalPages) {
-      paginationRow.push(
-        Markup.button.callback('▶️', `user_list_page_${currentPage + 1}`)
-      );
-    }
-    
-    buttons.push(paginationRow);
-    
-    // Добавляем кнопку возврата в меню
-    buttons.push([
-      Markup.button.callback('🔙 Назад к управлению пользователями', 'admin_user_menu')
-    ]);
-    
-    return Markup.inlineKeyboard(buttons);
-  }
+
   
   /**
    * Создает inline клавиатуру для просмотра деталей пользователя
@@ -712,19 +660,44 @@ export class KeyboardBuilder {
    * @returns Объект inline клавиатуры
    */
   static userDetailsKeyboard(userId: number) {
+    const telegramAccounts = prisma.telegramAccount.findMany( {where: {userId}} );
+
+
+
     return Markup.inlineKeyboard([
       [
         Markup.button.callback('📊 Статистика', `user_stats_${userId}`),
         Markup.button.callback('✏️ Переименовать', `rename_user_${userId}`)
       ],
       [
-        Markup.button.callback('🗑️ Удалить', `delete_${userId}`)
+        Markup.button.callback('🗑️ Удалить', `delete_${userId}`),
+        Markup.button.callback('👑 Управление админкой', `admin_manage_${userId}`)
+
       ],
       [
         Markup.button.callback('🔙 К списку пользователей', 'user_list')
       ]
     ]);
   }
+
+
+
+/**
+ * Создает inline клавиатуру для управления правами администратора
+ * @param userId ID пользователя
+ * @returns Объект inline клавиатуры
+ */
+static adminManagementKeyboard(userId: number) {
+  return Markup.inlineKeyboard([
+    [
+      Markup.button.callback('👑 Дать админку', `make_admin_${userId}`),
+      Markup.button.callback('🚫 Убрать админку', `remove_admin_${userId}`)
+    ],
+    [
+      Markup.button.callback('🔙 Назад к пользователю', `user_${userId}`)
+    ]
+  ]);
+}
   
   /**
    * Создает inline клавиатуру после создания пользователя
@@ -741,6 +714,22 @@ export class KeyboardBuilder {
       ],
       [
         Markup.button.callback('➕ Создать ещё одного', 'add_more_users')
+      ]
+    ]);
+  }
+  
+  /**
+   * Создает inline клавиатуру после переименования пользователя
+   * @param userId ID переименованного пользователя
+   * @returns Объект inline клавиатуры
+   */
+  static userActionsAfterRenameKeyboard(userId: number) {
+    return Markup.inlineKeyboard([
+      [
+        Markup.button.callback('👁️ Просмотреть информацию', `user_${userId}`)
+      ],
+      [
+        Markup.button.callback('🔙 К списку пользователей', 'user_list')
       ]
     ]);
   }

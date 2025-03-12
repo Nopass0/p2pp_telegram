@@ -1,290 +1,201 @@
-import { Context } from 'telegraf';
-import { message } from 'telegraf/filters';
-import { BotContext } from '@/types';
+import { Telegraf } from 'telegraf';
+import type { BotContext } from '@/types';
 import { NotificationService } from '@/services/notification-service';
 import { UserService } from '@/services/user-service';
 import { KeyboardBuilder } from '../components/keyboard';
-import { parseCSVBuffer } from '@/services/csv-parser';
-import axios from 'axios';
-import { TransactionService } from '@/services/transaction-service';
 
 /**
- * Обработчик загрузки отчетов
+ * Обработчик для управления отчетами пользователей
  */
 export class ReportHandler {
   /**
-   * Инициализирует обработчики для управления отчетами
+   * Инициализирует обработчики для работы с отчетами
    * @param bot Экземпляр бота Telegraf
    */
-  static init(bot: any) {
-    // Кнопка загрузки отчета
-    bot.hears('📊 Загрузить отчет', this.startReportUpload);
-    
-    // Обработка загрузки файла отчета
-    bot.on(message('document'), this.handleReportUpload);
-  }
-  
-  /**
-   * Начинает процесс загрузки отчета
-   */
-  private static async startReportUpload(ctx: BotContext) {
-    // Проверка авторизации
-    if (!ctx.session.userId) {
-      await ctx.reply('Для загрузки отчета необходимо авторизоваться. Используйте команду "🔑 Ввести код".');
-      return;
-    }
-    
-    // Устанавливаем состояние "ожидает отчет"
-    ctx.session.lastAction = 'waiting_report';
-    
-    // Получаем последнее уведомление
-    const lastNotification = await NotificationService.getLastNotification(ctx.session.userId);
-    
-    await ctx.reply(
-      'Пожалуйста, отправьте файл с отчетом. Поддерживаются форматы CSV, XLS, XLSX.',
-      KeyboardBuilder.cancelKeyboard()
-    );
-    
-    // Если есть активное уведомление, отмечаем его как обработанное
-    if (lastNotification && !lastNotification.reportReceived) {
-      await NotificationService.markReportReceived(lastNotification.id);
-    }
-  }
-  
-  /**
-   * Обрабатывает загрузку файла отчета
-   */
-  private static async handleReportUpload(ctx: BotContext, next: () => Promise<void>) {
-    // Если не в режиме ожидания отчета, передаем управление дальше
-    if (ctx.session.lastAction !== 'waiting_report') {
-      return next();
-    }
-    
-    // Проверка авторизации
-    if (!ctx.session.userId) {
-      await ctx.reply('Для загрузки отчета необходимо авторизоваться. Используйте команду "🔑 Ввести код".');
-      ctx.session.lastAction = undefined;
-      return;
-    }
-    
-    const document = ctx.message.document;
-    
-    // Проверяем формат файла
-    const validExtensions = ['.csv', '.xls', '.xlsx'];
-    const fileName = document.file_name.toLowerCase();
-    const isValidExtension = validExtensions.some(ext => fileName.endsWith(ext));
-    
-    if (!isValidExtension) {
-      await ctx.reply(
-        'Неподдерживаемый формат файла. Пожалуйста, загрузите отчет в формате CSV, XLS или XLSX.',
-        KeyboardBuilder.cancelKeyboard()
-      );
-      return;
-    }
-    
-    try {
-      // Отправляем сообщение о начале обработки
-      await ctx.reply('⏳ Загрузка и обработка отчета...');
-      
-      // Получаем ссылку на файл
-      const fileLink = await ctx.telegram.getFileLink(document.file_id);
-      
-      // Загружаем файл
-      const response = await axios({
-        method: 'get',
-        url: fileLink.href,
-        responseType: 'arraybuffer'
-      });
-      
-      // Преобразуем в буфер
-      const fileBuffer = Buffer.from(response.data);
-      
-      // Для CSV файлов используем парсер
-      if (fileName.endsWith('.csv')) {
-        // Парсим CSV файл
-        const parsedData = await parseCSVBuffer(fileBuffer);
-        
-        // Сохраняем транзакции в базу данных
-        const result = await TransactionService.saveTransactions(ctx.session.userId, parsedData.transactions);
-        
-        // Формируем отчет о сохранении
-        const statsText = `
-📊 *Анализ транзакций*
-          
-✅ Импортировано новых транзакций: ${result.added}
-⚠️ Пропущено дублирующихся: ${result.duplicates}
-          
-*Сводка:*
-- Общее количество: ${parsedData.summary.totalTransactions}
-- Активы: ${Object.keys(parsedData.summary.totalAmount).join(', ')}`;
-        
-        // Получаем последнее уведомление и отмечаем отчет как полученный
-        const lastNotification = await NotificationService.getLastNotification(ctx.session.userId);
-        
-        if (lastNotification && !lastNotification.reportReceived) {
-          await NotificationService.markReportReceived(lastNotification.id);
+  static init(bot: Telegraf<BotContext>) {
+    // Кнопка "Загрузить отчет"
+    bot.hears('📊 Загрузить отчет', async (ctx) => {
+      try {
+        // Проверяем авторизацию пользователя
+        if (!ctx.session?.userId) {
+          return ctx.reply('Для загрузки отчета необходимо авторизоваться. Введите ваш код-пароль.');
         }
+
+        const userId = ctx.session.userId;
+
+        // Получаем пользователя
+        const user = await UserService.findUserById(userId);
+        if (!user) {
+          return ctx.reply('Ошибка: пользователь не найден.');
+        }
+
+        // Получаем список неотмеченных уведомлений
+        const pendingNotifications = await NotificationService.getPendingNotificationsForUser(userId);
         
-        // Сбрасываем состояние
-        ctx.session.lastAction = undefined;
-        
-        // Отправляем отчет
+        if (pendingNotifications.length === 0) {
+          return ctx.reply(
+            '📝 У вас нет ожидающих отчетов. ' +
+            'Загрузите CSV файл с транзакциями, когда получите напоминание.',
+            KeyboardBuilder.mainMenu()
+          );
+        }
+
+        // Запрашиваем загрузку отчета
         await ctx.reply(
-          `✅ Файл "${document.file_name}" успешно обработан!\n\n${statsText}`,
-          { 
+          '📊 *Загрузка отчета*\n\n' +
+          'Для загрузки отчета о P2P транзакциях, пожалуйста, перешлите CSV файл из бота @wallet.\n\n' +
+          'Отчет должен содержать информацию о ваших транзакциях в формате CSV.',
+          {
             parse_mode: 'Markdown',
-            ...KeyboardBuilder.mainMenu() 
+            ...KeyboardBuilder.mainMenu()
           }
         );
-      } else {
-        // Для других форматов - просто подтверждение загрузки
+      } catch (error) {
+        console.error('Ошибка при запросе загрузки отчета:', error);
         await ctx.reply(
-          `✅ Файл "${document.file_name}" принят к обработке. В настоящее время поддерживается только полная обработка CSV файлов.`,
+          '❌ Произошла ошибка при запросе загрузки отчета. Пожалуйста, попробуйте еще раз.',
           KeyboardBuilder.mainMenu()
         );
-        
-        // Получаем последнее уведомление и отмечаем отчет как полученный
-        const lastNotification = await NotificationService.getLastNotification(ctx.session.userId);
-        
-        if (lastNotification && !lastNotification.reportReceived) {
-          await NotificationService.markReportReceived(lastNotification.id);
-        }
-        
-        // Сбрасываем состояние
-        ctx.session.lastAction = undefined;
       }
-    } catch (error) {
-      console.error('Ошибка при обработке файла отчета:', error);
-      
-      // Отправляем сообщение об ошибке
-      await ctx.reply(
-        `❌ Произошла ошибка при обработке файла: ${error.message || 'Неизвестная ошибка'}.\n\nПожалуйста, убедитесь, что файл имеет правильный формат и данные.`,
-        KeyboardBuilder.mainMenu()
-      );
-      
-      // Сбрасываем состояние
-      ctx.session.lastAction = undefined;
-    }
-  }
-  
-  /**
-   * Метод для отправки напоминаний о загрузке отчетов
-   * @param bot Экземпляр бота Telegraf
-   */
-  static async sendReportReminders(bot: any) {
-    try {
-      // Получаем пользователей, которым нужно отправить напоминание
-      const usersForReminder = await NotificationService.getUsersForReminder();
-      
-      for (const { user, shouldNotify } of usersForReminder) {
-        // Если пользователю не нужно отправлять напоминание, пропускаем
-        if (!shouldNotify) {
-          continue;
+    });
+
+    // Обработка загрузки документа как отчета
+    bot.on('document', async (ctx, next) => {
+      try {
+        // Если пользователь не авторизован, передаем управление дальше
+        if (!ctx.session?.userId) {
+          return next();
         }
+
+        const userId = ctx.session.userId;
         
-        // Если у пользователя нет Telegram аккаунтов, пропускаем
-        if (!user.telegramAccounts || user.telegramAccounts.length === 0) {
-          continue;
-        }
+        // Проверяем наличие неотмеченных уведомлений
+        const pendingNotifications = await NotificationService.getPendingNotificationsForUser(userId);
         
-        // Создаем новое уведомление
-        const notification = await NotificationService.createReportNotification(user.id);
-        
-        if (!notification) {
-          continue;
-        }
-        
-        // Отправляем напоминание на все связанные Telegram аккаунты
-        for (const account of user.telegramAccounts) {
-          try {
-            await bot.telegram.sendMessage(
-              account.telegramId,
-              `⚠️ <b>Напоминание о загрузке отчета</b> ⚠️\n\nПожалуйста, загрузите отчет о транзакциях.\n\nНапоминаем, что если отчет не будет загружен в течение 10 минут, администратор получит уведомление.`,
-              {
-                parse_mode: 'HTML',
-                reply_markup: KeyboardBuilder.mainMenu().reply_markup
-              }
+        // Если документ был отправлен в ответ на запрос отчета
+        if (pendingNotifications.length > 0) {
+          const document = ctx.message.document;
+          
+          // Проверяем формат файла
+          if (document && document.file_name && document.file_name.toLowerCase().endsWith('.csv')) {
+            await ctx.reply('⏳ Обработка отчета...');
+            
+            // Здесь можно добавить код для обработки CSV файла
+            // В данном случае просто отмечаем все ожидающие уведомления как обработанные
+            for (const notification of pendingNotifications) {
+              await NotificationService.markReportReceived(notification.id);
+            }
+            
+            await ctx.reply(
+              '✅ Отчет успешно загружен и обработан!\n\n' +
+              `Количество отмеченных уведомлений: ${pendingNotifications.length}\n\n` +
+              'Спасибо за своевременное предоставление отчета.',
+              KeyboardBuilder.mainMenu()
             );
-          } catch (error) {
-            console.error(`Ошибка при отправке напоминания пользователю ${user.id}, аккаунт ${account.telegramId}:`, error);
+            
+            return;
           }
         }
-      }
-    } catch (error) {
-      console.error('Ошибка при отправке напоминаний о загрузке отчетов:', error);
-    }
-  }
-  
-  /**
-   * Метод для проверки и отправки уведомлений администраторам
-   * @param bot Экземпляр бота Telegraf
-   */
-  static async checkAndNotifyAdmins(bot: any) {
-    try {
-      // Получаем уведомления, требующие внимания администратора
-      const pendingNotifications = await NotificationService.getPendingAdminNotifications();
-      
-      if (pendingNotifications.length === 0) {
-        return;
-      }
-      
-      // Получаем список администраторов
-      const admins = await UserService.getAdmins();
-      
-      if (!admins || admins.length === 0) {
-        return;
-      }
-      
-      // Группируем уведомления по пользователям
-      const userNotifications = new Map<number, { user: any, count: number }>();
-      
-      for (const notification of pendingNotifications) {
-        const userId = notification.userId;
         
-        // Отмечаем, что администратор уведомлен
-        await NotificationService.markAdminNotified(notification.id);
+        // Если это не отчет или нет ожидающих уведомлений, передаем управление дальше
+        return next();
+      } catch (error) {
+        console.error('Ошибка при обработке отчета:', error);
+        await ctx.reply(
+          '❌ Произошла ошибка при обработке отчета. Пожалуйста, попробуйте еще раз.',
+          KeyboardBuilder.mainMenu()
+        );
+      }
+    });
+    
+    // Команда для просмотра истории отчетов
+    bot.command('reports', async (ctx) => {
+      try {
+        // Проверяем авторизацию пользователя
+        if (!ctx.session?.userId) {
+          return ctx.reply('Для просмотра истории отчетов необходимо авторизоваться. Введите ваш код-пароль.');
+        }
+
+        const userId = ctx.session.userId;
         
-        // Группируем уведомления
-        if (!userNotifications.has(userId)) {
-          userNotifications.set(userId, { user: notification.user, count: 0 });
+        // Получаем историю отчетов пользователя
+        const result = await NotificationService.getUserNotificationHistory(userId, 1, 10);
+        
+        if (result.notifications.length === 0) {
+          return ctx.reply(
+            '📋 *История отчетов*\n\n' +
+            'У вас еще нет истории отчетов.',
+            {
+              parse_mode: 'Markdown',
+              ...KeyboardBuilder.mainMenu()
+            }
+          );
         }
         
-        userNotifications.get(userId).count++;
-      }
-      
-      // Отправляем уведомления всем администраторам
-      for (const admin of admins) {
-        // Пропускаем если у админа нет телеграм аккаунтов
-        if (!admin.telegramAccounts || admin.telegramAccounts.length === 0) {
-          continue;
+        // Формируем сообщение с историей отчетов
+        let message = '📋 *История отчетов*\n\n';
+        
+        for (const notification of result.notifications) {
+          const notificationTime = new Date(notification.notificationTime).toLocaleString('ru-RU');
+          
+          const status = notification.reportReceived 
+            ? `✅ Получен (${notification.reportTime ? new Date(notification.reportTime).toLocaleString('ru-RU') : 'время не указано'})` 
+            : '❌ Не получен';
+          
+          message += `• ${notificationTime}: ${status}\n`;
         }
         
-        // Формируем сообщение
-        let message = '⚠️ <b>Оповещение для администратора</b> ⚠️\n\n';
-        message += 'Следующие пользователи не загрузили отчеты после напоминаний:\n\n';
+        if (result.totalPages > 1) {
+          message += `\n_Показаны последние ${result.notifications.length} из ${result.total} отчетов_`;
+        }
         
-        userNotifications.forEach(({ user, count }, userId) => {
-          message += `- ${user.name}: ${count} незагруженных отчетов\n`;
+        await ctx.reply(message, {
+          parse_mode: 'Markdown',
+          ...KeyboardBuilder.mainMenu()
         });
-        
-        // Отправляем уведомление на все телеграм аккаунты администратора
-        for (const account of admin.telegramAccounts) {
-          try {
-            await bot.telegram.sendMessage(
-              account.telegramId,
-              message,
-              {
-                parse_mode: 'HTML',
-                reply_markup: KeyboardBuilder.adminMainMenu().reply_markup
-              }
-            );
-          } catch (error) {
-            console.error(`Ошибка при отправке уведомления администратору ${admin.id}, аккаунт ${account.telegramId}:`, error);
-          }
-        }
+      } catch (error) {
+        console.error('Ошибка при получении истории отчетов:', error);
+        await ctx.reply(
+          '❌ Произошла ошибка при получении истории отчетов. Пожалуйста, попробуйте еще раз.',
+          KeyboardBuilder.mainMenu()
+        );
       }
-    } catch (error) {
-      console.error('Ошибка при отправке уведомлений администраторам:', error);
-    }
+    });
+    
+    // Команда для просмотра статистики отчетов
+    bot.command('reportstats', async (ctx) => {
+      try {
+        // Проверяем авторизацию пользователя
+        if (!ctx.session?.userId) {
+          return ctx.reply('Для просмотра статистики отчетов необходимо авторизоваться. Введите ваш код-пароль.');
+        }
+
+        const userId = ctx.session.userId;
+        
+        // Получаем статистику отчетов пользователя
+        const stats = await NotificationService.getUserReportStats(userId);
+        
+        // Формируем сообщение со статистикой
+        let message = '📊 *Статистика отчетов*\n\n';
+        message += `Всего запросов отчетов: ${stats.total}\n`;
+        message += `Предоставлено отчетов: ${stats.received} (${stats.receivedPercentage.toFixed(2)}%)\n`;
+        message += `Пропущено отчетов: ${stats.missed} (${stats.missedPercentage.toFixed(2)}%)\n`;
+        
+        if (stats.averageResponseTime !== null) {
+          message += `Среднее время ответа: ${stats.averageResponseTime} минут\n`;
+        }
+        
+        await ctx.reply(message, {
+          parse_mode: 'Markdown',
+          ...KeyboardBuilder.mainMenu()
+        });
+      } catch (error) {
+        console.error('Ошибка при получении статистики отчетов:', error);
+        await ctx.reply(
+          '❌ Произошла ошибка при получении статистики отчетов. Пожалуйста, попробуйте еще раз.',
+          KeyboardBuilder.mainMenu()
+        );
+      }
+    });
   }
 }

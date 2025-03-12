@@ -230,6 +230,21 @@ export class UserService {
   }
   
   /**
+   * Переименовывает пользователя
+   * @param id ID пользователя
+   * @param newName Новое имя пользователя
+   * @returns Обновленный пользователь или null в случае ошибки
+   */
+  static async renameUser(id: number, newName: string): Promise<VirtualUser | null> {
+    try {
+      return await this.updateUser(id, { name: newName });
+    } catch (error) {
+      console.error('Ошибка при переименовании пользователя:', error);
+      return null;
+    }
+  }
+  
+  /**
    * Добавляет телеграм аккаунт к виртуальному пользователю
    * @param userId ID виртуального пользователя
    * @param telegramId ID телеграм аккаунта

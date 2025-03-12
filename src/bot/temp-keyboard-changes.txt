@@ -1,0 +1,24 @@
+// Изменения для keyboard.ts
+
+/**
+ * Создает inline клавиатуру для просмотра деталей пользователя
+ * @param userId ID пользователя
+ * @param isActive Статус активности пользователя (true - активен)
+ * @param isAdmin Статус администратора (true - пользователь является админом)
+ * @returns Объект inline клавиатуры
+ */
+static userDetailsKeyboard(userId: number, isActive: boolean = true, isAdmin: boolean = false) {
+  return Markup.inlineKeyboard([
+    [
+      Markup.button.callback('📊 Статистика', `user_stats_${userId}`),
+      Markup.button.callback('✏️ Переименовать', `rename_user_${userId}`)
+    ],
+    [
+      Markup.button.callback('🗑️ Удалить', `delete_${userId}`),
+      Markup.button.callback(isAdmin ? '🔴 Забрать админку' : '🟢 Сделать админом', `toggle_admin_${userId}`)
+    ],
+    [
+      Markup.button.callback('🔙 К списку пользователей', 'user_list')
+    ]
+  ]);
+}

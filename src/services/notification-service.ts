@@ -96,6 +96,22 @@ export class NotificationService {
   }
   
   /**
+   * Получает уведомление по его ID
+   * @param id ID уведомления
+   * @returns Уведомление или null если не найдено
+   */
+  static async getNotificationById(id: number): Promise<ReportNotification | null> {
+    try {
+      return await prisma.reportNotification.findUnique({
+        where: { id }
+      });
+    } catch (error) {
+      console.error('Ошибка при получении уведомления по ID:', error);
+      return null;
+    }
+  }
+  
+  /**
    * Получает все необработанные уведомления, для которых нужно уведомить админа
    * @returns Массив необработанных уведомлений
    */
@@ -134,7 +150,7 @@ export class NotificationService {
    * Получает список пользователей, которым нужно отправить напоминание
    * @returns Массив пользователей
    */
-  static async getUsersForReminder(): Promise<{ user: any, shouldNotify: boolean }[]> {
+  static async getUsersForReminder(): Promise<{ user: any, shouldNotify: boolean, lastNotification: ReportNotification | null }[]> {
     try {
       // Получаем настройки интервала напоминаний
       const settings = await AdminService.getSystemSettings();
@@ -161,7 +177,7 @@ export class NotificationService {
         
         // Если пользователь не работает, не нужно отправлять напоминание
         if (!isWorking) {
-          return { user, shouldNotify: false };
+          return { user, shouldNotify: false, lastNotification: null };
         }
         
         // Получаем последнее уведомление
@@ -182,7 +198,7 @@ export class NotificationService {
           shouldNotify = diffMinutes >= settings.reportReminderInterval;
         }
         
-        return { user, shouldNotify };
+        return { user, shouldNotify, lastNotification };
       }));
       
       return usersForReminder;
@@ -237,6 +253,94 @@ export class NotificationService {
         total: 0,
         page: 1,
         totalPages: 0
+      };
+    }
+  }
+  
+  /**
+   * Получает все неотмеченные уведомления для пользователя
+   * @param userId ID пользователя
+   * @returns Массив неотмеченных уведомлений
+   */
+  static async getPendingNotificationsForUser(userId: number): Promise<ReportNotification[]> {
+    try {
+      return await prisma.reportNotification.findMany({
+        where: {
+          userId,
+          reportReceived: false
+        },
+        orderBy: {
+          notificationTime: 'desc'
+        }
+      });
+    } catch (error) {
+      console.error('Ошибка при получении неотмеченных уведомлений для пользователя:', error);
+      return [];
+    }
+  }
+  
+  /**
+   * Получает статистику отчетов пользователя
+   * @param userId ID пользователя
+   * @returns Объект со статистикой
+   */
+  static async getUserReportStats(userId: number): Promise<{
+    total: number;
+    received: number;
+    missed: number;
+    receivedPercentage: number;
+    missedPercentage: number;
+    averageResponseTime: number | null;
+  }> {
+    try {
+      // Получаем все уведомления пользователя
+      const notifications = await prisma.reportNotification.findMany({
+        where: { userId }
+      });
+      
+      const total = notifications.length;
+      const received = notifications.filter(n => n.reportReceived).length;
+      const missed = total - received;
+      
+      const receivedPercentage = total > 0 ? (received / total) * 100 : 0;
+      const missedPercentage = total > 0 ? (missed / total) * 100 : 0;
+      
+      // Вычисляем среднее время ответа для полученных отчетов
+      let totalResponseTimeMinutes = 0;
+      let receivedWithTime = 0;
+      
+      for (const notification of notifications) {
+        if (notification.reportReceived && notification.reportTime) {
+          const notificationTime = new Date(notification.notificationTime);
+          const reportTime = new Date(notification.reportTime);
+          
+          const responseTimeMs = reportTime.getTime() - notificationTime.getTime();
+          const responseTimeMinutes = responseTimeMs / (60 * 1000);
+          
+          totalResponseTimeMinutes += responseTimeMinutes;
+          receivedWithTime++;
+        }
+      }
+      
+      const averageResponseTime = receivedWithTime > 0 ? Math.round(totalResponseTimeMinutes / receivedWithTime) : null;
+      
+      return {
+        total,
+        received,
+        missed,
+        receivedPercentage,
+        missedPercentage,
+        averageResponseTime
+      };
+    } catch (error) {
+      console.error('Ошибка при получении статистики отчетов пользователя:', error);
+      return {
+        total: 0,
+        received: 0,
+        missed: 0,
+        receivedPercentage: 0,
+        missedPercentage: 0,
+        averageResponseTime: null
       };
     }
   }

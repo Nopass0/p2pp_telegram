@@ -3,6 +3,7 @@ import type { BotContext } from '@/types';
 import { UserService } from '@/services/user-service';
 import { KeyboardBuilder } from '../components/keyboard';
 import { TransactionService } from '@/services/transaction-service';
+import { AdminService } from '@/services/admin-service';
 
 /**
  * Класс для управления административными командами
@@ -58,6 +59,12 @@ export class AdminHandler {
           return await this.processTextInput(ctx);
         }
         
+        // Проверяем состояние ожидания переименования пользователя
+        if (ctx.session.waitingForRenameUser) {
+          console.log('Обнаружено состояние ожидания переименования пользователя, обрабатываем сообщение');
+          return await this.processRenameUser(ctx);
+        }
+        
         // Если это не наше сообщение, передаем управление дальше
         return next();
       });
@@ -73,6 +80,18 @@ export class AdminHandler {
       bot.action(/^user_stats_(\d+)$/, this.showUserDetailedStats);
       bot.action(/^user_transactions_(\d+)$/, this.showUserTransactions);
       bot.action(/^transactions_date_filter_(\d+)$/, this.showTransactionsDateFilter);
+      
+      // Обработчик для перехода к управлению правами администратора
+      bot.action(/^admin_manage_(\d+)$/, this.showAdminManagement);
+
+      // Обработчики для назначения и снятия прав администратора
+      bot.action(/^make_admin_(\d+)$/, this.makeAdmin);
+      bot.action(/^remove_admin_(\d+)$/, this.removeAdmin);
+
+      
+      // Обработчик для переименования пользователя
+      bot.action(/^rename_user_(\d+)$/, this.startRenameUserProcess);
+      bot.action(/^cancel_rename_(\d+)$/, this.cancelRenameUser);
       
       // Обработчики пагинации
       bot.action(/^user_page_(\d+)$/, (ctx) => this.handleUserListPagination(ctx, parseInt(ctx.match[1])));
@@ -142,6 +161,206 @@ export class AdminHandler {
     await ctx.reply('Операция отменена.', KeyboardBuilder.adminUserManagementMenu());
   }
 
+ /**
+ * Показывает меню управления правами администратора
+ */
+static async showAdminManagement(ctx: BotContext) {
+  if (!ctx.session) ctx.session = {};
+  ctx.session.isAdmin = true;
+  
+  try {
+    const userId = parseInt(ctx.match[1]);
+    
+    // Получаем информацию о пользователе
+    const user = await UserService.findUserById(userId);
+    
+    if (!user) {
+      await ctx.answerCbQuery('Пользователь не найден');
+      return await ctx.editMessageText('Пользователь не найден', KeyboardBuilder.adminUserManagementMenu());
+    }
+    
+    // Проверяем наличие Telegram аккаунтов
+    if (!user.telegramAccounts || user.telegramAccounts.length === 0) {
+      await ctx.answerCbQuery('У пользователя нет привязанных Telegram аккаунтов');
+      return await ctx.editMessageText(
+        `⚠️ Пользователь "${user.name}" не имеет привязанных Telegram аккаунтов.\nНельзя назначить права администратора.`,
+        {
+          ...KeyboardBuilder.userDetailsKeyboard(userId)
+        }
+      );
+    }
+    
+    // Проверяем, является ли пользователь администратором
+    const telegramId = user.telegramAccounts[0].telegramId;
+    const isAdmin = await AdminService.isAdmin(telegramId);
+    
+    // Формируем сообщение
+    let message = `👑 *Управление правами администратора*\n\n`;
+    message += `Пользователь: *${user.name}* (ID: ${userId})\n`;
+    message += `Telegram ID: \`${telegramId}\`\n`;
+    message += `Статус: ${isAdmin ? '✅ Администратор' : '❌ Не администратор'}\n\n`;
+    message += `Выберите действие:`;
+    
+    // Отправляем сообщение с клавиатурой
+    await ctx.editMessageText(message, {
+      parse_mode: 'Markdown',
+      ...KeyboardBuilder.adminManagementKeyboard(userId)
+    });
+    
+    await ctx.answerCbQuery();
+  } catch (error) {
+    console.error('Ошибка при отображении меню управления правами администратора:', error);
+    await ctx.answerCbQuery('Произошла ошибка');
+    await ctx.editMessageText('❌ Произошла ошибка при загрузке меню.', KeyboardBuilder.adminUserManagementMenu());
+  }
+}
+
+/**
+ * Назначает пользователя администратором
+ */
+private static async makeAdmin(ctx: BotContext) {
+  if (!ctx.session) ctx.session = {};
+  ctx.session.isAdmin = true;
+  
+  try {
+    const userId = parseInt(ctx.match[1]);
+    
+    // Получаем информацию о пользователе
+    const user = await UserService.findUserById(userId);
+    
+    if (!user) {
+      await ctx.answerCbQuery('Пользователь не найден');
+      return await ctx.editMessageText('Пользователь не найден', KeyboardBuilder.adminUserManagementMenu());
+    }
+    
+    // Проверяем наличие Telegram аккаунтов
+    if (!user.telegramAccounts || user.telegramAccounts.length === 0) {
+      await ctx.answerCbQuery('У пользователя нет привязанных Telegram аккаунтов');
+      return await ctx.editMessageText(
+        `⚠️ Пользователь "${user.name}" не имеет привязанных Telegram аккаунтов.\nНельзя назначить права администратора.`,
+        {
+          ...KeyboardBuilder.userDetailsKeyboard(userId)
+        }
+      );
+    }
+    
+    // Получаем информацию о Telegram аккаунте
+    const telegramAccount = user.telegramAccounts[0];
+    const telegramId = telegramAccount.telegramId;
+    
+    // Проверяем, является ли уже администратором
+    const isAlreadyAdmin = await AdminService.isAdmin(telegramId);
+    
+    if (isAlreadyAdmin) {
+      await ctx.answerCbQuery('Пользователь уже является администратором');
+      return await this.showAdminManagement(ctx);
+    }
+    
+    // Назначаем пользователя администратором
+    const admin = await AdminService.addAdmin(
+      telegramId,
+      telegramAccount.username,
+      telegramAccount.firstName,
+      telegramAccount.lastName
+    );
+    
+    if (admin) {
+      await ctx.answerCbQuery('Пользователь успешно назначен администратором');
+      await ctx.reply(`✅ Пользователь "${user.name}" успешно назначен администратором!`);
+      // Пересоздаем контекст с нужным match для showAdminManagement
+      ctx.match = [null, userId.toString()];
+      return await AdminHandler.showAdminManagement(ctx);
+    } else {
+      await ctx.answerCbQuery('Ошибка при назначении администратора');
+      await ctx.reply(`❌ Произошла ошибка при назначении пользователя "${user.name}" администратором.`);
+      // Пересоздаем контекст с нужным match для showAdminManagement
+      ctx.match = [null, userId.toString()];
+      return await AdminHandler.showAdminManagement(ctx);
+    }
+  } catch (error) {
+    console.error('Ошибка при назначении пользователя администратором:', error);
+    await ctx.answerCbQuery('Произошла ошибка');
+    await ctx.reply('❌ Произошла ошибка при назначении администратора.', KeyboardBuilder.adminUserManagementMenu());
+  }
+}
+
+/**
+ * Снимает права администратора с пользователя
+ */
+private static async removeAdmin(ctx: BotContext) {
+  if (!ctx.session) ctx.session = {};
+  ctx.session.isAdmin = true;
+  
+  try {
+    const userId = parseInt(ctx.match[1]);
+    
+    // Получаем информацию о пользователе
+    const user = await UserService.findUserById(userId);
+    
+    if (!user) {
+      await ctx.answerCbQuery('Пользователь не найден');
+      return await ctx.editMessageText('Пользователь не найден', KeyboardBuilder.adminUserManagementMenu());
+    }
+    
+    // Проверяем наличие Telegram аккаунтов
+    if (!user.telegramAccounts || user.telegramAccounts.length === 0) {
+      await ctx.answerCbQuery('У пользователя нет привязанных Telegram аккаунтов');
+      return await ctx.editMessageText(
+        `⚠️ Пользователь "${user.name}" не имеет привязанных Telegram аккаунтов.`,
+        {
+          ...KeyboardBuilder.userDetailsKeyboard(userId)
+        }
+      );
+    }
+    
+    // Получаем Telegram ID
+    const telegramId = user.telegramAccounts[0].telegramId;
+    
+    // Проверяем, является ли администратором
+    const isAdmin = await AdminService.isAdmin(telegramId);
+    
+    if (!isAdmin) {
+      await ctx.answerCbQuery('Пользователь не является администратором');
+      // Пересоздаем контекст с нужным match для showAdminManagement
+      ctx.match = [null, userId.toString()];
+      return await AdminHandler.showAdminManagement(ctx);
+    }
+    
+    // Проверяем, не является ли пользователь администратором из .env
+    const adminIdsStr = process.env.ADMIN_IDS || '';
+    const adminIds = adminIdsStr.split(',').map(id => id.trim());
+    
+    if (adminIds.includes(telegramId)) {
+      await ctx.answerCbQuery('Нельзя удалить администратора, указанного в .env');
+      await ctx.reply(
+        `⚠️ Невозможно удалить права администратора у пользователя "${user.name}", так как он указан в переменной окружения ADMIN_IDS.`
+      );
+      return await this.showAdminManagement(ctx);
+    }
+    
+    // Снимаем права администратора
+    const result = await AdminService.removeAdmin(telegramId);
+    
+    if (result) {
+      await ctx.answerCbQuery('Права администратора успешно удалены');
+      await ctx.reply(`✅ Права администратора успешно удалены у пользователя "${user.name}".`);
+      // Пересоздаем контекст с нужным match для showAdminManagement
+      ctx.match = [null, userId.toString()];
+      return await AdminHandler.showAdminManagement(ctx);
+    } else {
+      await ctx.answerCbQuery('Ошибка при удалении прав администратора');
+      await ctx.reply(`❌ Произошла ошибка при удалении прав администратора у пользователя "${user.name}".`);
+      // Пересоздаем контекст с нужным match для showAdminManagement
+      ctx.match = [null, userId.toString()];
+      return await AdminHandler.showAdminManagement(ctx);
+    }
+  } catch (error) {
+    console.error('Ошибка при удалении прав администратора:', error);
+    await ctx.answerCbQuery('Произошла ошибка');
+    await ctx.reply('❌ Произошла ошибка при удалении прав администратора.', KeyboardBuilder.adminUserManagementMenu());
+  }
+}
+
   /**
    * Запускает процесс добавления пользователя
    */
@@ -178,6 +397,8 @@ export class AdminHandler {
       await ctx.reply('❌ Произошла ошибка при запуске процесса добавления пользователя.', KeyboardBuilder.adminUserManagementMenu());
     }
   }
+
+  
   
   /**
    * Обрабатывает текстовые сообщения, включая ввод имени пользователя
@@ -246,6 +467,74 @@ export class AdminHandler {
       return false;
     } catch (error) {
       console.error('Ошибка в processTextInput:', error);
+      return false;
+    }
+  }
+
+  /**
+   * Обрабатывает текстовые сообщения для переименования пользователя
+   */
+  private static async processRenameUser(ctx: BotContext) {
+    try {
+      if (!ctx.session) ctx.session = {};
+      
+      // Проверяем, есть ли текстовое сообщение
+      if (!ctx.message || !('text' in ctx.message)) {
+        return false;
+      }
+      
+      // Выводим дополнительную информацию для отладки
+      console.log('processRenameUser вызван с текстом:', ctx.message.text);
+      console.log('Состояние сессии:', JSON.stringify(ctx.session));
+      
+      // Проверяем флаг ожидания переименования пользователя
+      if (ctx.session.waitingForRenameUser && ctx.message.text) {
+        console.log('Обработка нового имени пользователя:', ctx.message.text);
+        const newName = ctx.message.text;
+        
+        // Если пользователь ввел "Отмена" или нажал кнопку отмены
+        if (newName === '❌ Отмена') {
+          // Очищаем все флаги
+          delete ctx.session.waitingForRenameUser;
+          return await ctx.reply('Операция отменена.', KeyboardBuilder.adminUserManagementMenu());
+        }
+        
+        console.log('Переименование пользователя с ID:', ctx.session.selectedUserId);
+        
+        // Сразу очищаем флаг ожидания переименования, чтобы предотвратить повторную обработку
+        delete ctx.session.waitingForRenameUser;
+        
+        // Переименовываем пользователя
+        try {
+          const result = await UserService.renameUser(ctx.session.selectedUserId, newName);
+          
+          if (result) {
+            console.log('Пользователь успешно переименован:', result);
+            
+            return await ctx.reply(
+              `✅ Пользователь успешно переименован в "${newName}"!\n\n` +
+              `👤 Пользователь: ${result.name} (ID: ${result.id})\n` +
+              `🔑 Код доступа: \`${result.passCode}\`\n\n` +
+              `Выберите дальнейшее действие:`,
+              {
+                parse_mode: 'Markdown',
+                ...KeyboardBuilder.userActionsAfterRenameKeyboard(result.id)
+              }
+            );
+          } else {
+            console.error('Ошибка при переименовании пользователя: result равен null');
+            return await ctx.reply('❌ Ошибка при переименовании пользователя.', KeyboardBuilder.adminUserManagementMenu());
+          }
+        } catch (error) {
+          console.error('Ошибка при переименовании пользователя:', error);
+          return await ctx.reply('❌ Произошла ошибка при переименовании пользователя.', KeyboardBuilder.adminUserManagementMenu());
+        }
+      }
+      
+      // Если это был другой текст, просто возвращаем false
+      return false;
+    } catch (error) {
+      console.error('Ошибка в processRenameUser:', error);
       return false;
     }
   }
@@ -434,6 +723,8 @@ export class AdminHandler {
         KeyboardBuilder.adminUserManagementMenu());
     }
   }
+
+  
 
   /**
    * Показывает запрос на подтверждение удаления пользователя
@@ -916,6 +1207,76 @@ export class AdminHandler {
     } catch (error) {
       console.error('Ошибка при получении статистики транзакций:', error);
       await ctx.reply('❌ Произошла ошибка при получении статистики транзакций.', KeyboardBuilder.adminStatsMenu());
+    }
+  }
+
+  /**
+   * Запускает процесс переименования пользователя
+   */
+  private static async startRenameUserProcess(ctx: BotContext) {
+    try {
+      if (!ctx.session) ctx.session = {};
+      
+      // Получаем ID пользователя из callback_data
+      const userId = parseInt(ctx.match[1]);
+      
+      // Получаем данные пользователя
+      const user = await UserService.findUserById(userId);
+      
+      if (!user) {
+        await ctx.answerCbQuery('Пользователь не найден');
+        return await ctx.editMessageText('Пользователь не найден', KeyboardBuilder.adminUserManagementMenu());
+      }
+      
+      // Устанавливаем флаги сессии
+      ctx.session.isAdmin = true;
+      ctx.session.waitingForRenameUser = true;
+      ctx.session.selectedUserId = userId;
+      
+      console.log('Запуск процесса переименования пользователя');
+      console.log('Текущая сессия:', JSON.stringify(ctx.session));
+      
+      // Отправляем сообщение с запросом нового имени
+      await ctx.reply(
+        `✏️ *Введите новое имя для пользователя "${user.name}" (ID: ${user.id}):*\n\nВы можете отменить операцию, нажав на кнопку ниже`,
+        {
+          parse_mode: 'Markdown',
+          ...Markup.inlineKeyboard([
+            [Markup.button.callback('❌ Отмена', `cancel_rename_${userId}`)]
+          ])
+        }
+      );
+      
+      await ctx.answerCbQuery();
+      
+    } catch (error) {
+      console.error('Ошибка при запуске процесса переименования пользователя:', error);
+      await ctx.answerCbQuery('Произошла ошибка');
+      await ctx.reply('❌ Произошла ошибка при запуске процесса переименования пользователя.', KeyboardBuilder.adminUserManagementMenu());
+    }
+  }
+  
+  /**
+   * Отменяет процесс переименования пользователя
+   */
+  private static async cancelRenameUser(ctx: BotContext) {
+    try {
+      if (!ctx.session) ctx.session = {};
+      
+      // Получаем ID пользователя из callback_data
+      const userId = parseInt(ctx.match[1]);
+      
+      // Очищаем флаги сессии
+      delete ctx.session.waitingForRenameUser;
+      
+      await ctx.reply('Переименование пользователя отменено.');
+      
+      // Показываем информацию о пользователе
+      await this.showUserDetails(ctx);
+      
+    } catch (error) {
+      console.error('Ошибка при отмене переименования пользователя:', error);
+      await ctx.reply('❌ Произошла ошибка при отмене переименования пользователя.', KeyboardBuilder.adminUserManagementMenu());
     }
   }
 }

@@ -4,6 +4,7 @@ import { NotificationService } from './notification-service';
 import { AdminService } from './admin-service';
 import { UserService } from './user-service';
 import { WorkSessionService } from './work-session-service';
+import { KeyboardBuilder } from '../bot/components/keyboard';
 
 /**
  * Сервис планировщика задач для бота
@@ -76,7 +77,7 @@ export class SchedulerService {
     // Получаем пользователей, которым нужно отправить напоминание
     const usersForReminder = await NotificationService.getUsersForReminder();
 
-    for (const { user, shouldNotify } of usersForReminder) {
+    for (const { user, shouldNotify, lastNotification } of usersForReminder) {
       if (shouldNotify && user.telegramAccounts.length > 0) {
         // Создаем уведомление в базе данных
         const notification = await NotificationService.createReportNotification(user.id);
@@ -94,16 +95,99 @@ export class SchedulerService {
                 `Уважаемый ${user.name}, пожалуйста, не забудьте загрузить отчет о P2P транзакциях.\n\n` +
                 `Если отчет не будет загружен в течение ${settings?.reportWaitTime || 10} минут, ` +
                 `администраторы системы будут уведомлены.`,
-                { parse_mode: 'Markdown' }
+                { 
+                  parse_mode: 'Markdown',
+                  reply_markup: KeyboardBuilder.mainMenu().reply_markup
+                }
               );
               
               console.log(`Уведомление отправлено пользователю ${user.name} (${telegramAccount.telegramId})`);
+              
+              // Запускаем проверку для этого уведомления через настроенное время ожидания
+              this.scheduleAdminNotificationCheck(notification.id, settings?.reportWaitTime || 10);
             } catch (error) {
               console.error(`Ошибка при отправке уведомления пользователю ${telegramAccount.telegramId}:`, error);
             }
           }
         }
       }
+    }
+  }
+
+  /**
+   * Запланировать проверку уведомления администраторов
+   * @param notificationId ID уведомления
+   * @param waitTimeMinutes Время ожидания в минутах
+   */
+  private static scheduleAdminNotificationCheck(notificationId: number, waitTimeMinutes: number) {
+    setTimeout(async () => {
+      try {
+        // Проверяем текущее состояние уведомления
+        const notification = await NotificationService.getNotificationById(notificationId);
+        
+        // Если уведомление существует и отчет не получен и администраторы еще не уведомлены
+        if (notification && !notification.reportReceived && !notification.adminNotified) {
+          // Отмечаем, что администраторы должны быть уведомлены
+          await NotificationService.markAdminNotified(notificationId);
+          
+          // Получаем пользователя
+          const user = await UserService.findUserById(notification.userId);
+          
+          if (user) {
+            // Уведомляем всех администраторов
+            await this.notifyAdminsAboutMissedReport(user, notification);
+          }
+        }
+      } catch (error) {
+        console.error('Ошибка при проверке уведомления администраторов:', error);
+      }
+    }, waitTimeMinutes * 60 * 1000); // Переводим минуты в миллисекунды
+  }
+
+  /**
+   * Уведомить администраторов о пропущенном отчете
+   * @param user Пользователь, который не предоставил отчет
+   * @param notification Уведомление
+   */
+  private static async notifyAdminsAboutMissedReport(user: any, notification: any) {
+    try {
+      // Получаем всех администраторов
+      const admins = await AdminService.getAllAdmins();
+      
+      if (admins.length === 0) {
+        console.log('Нет администраторов для уведомления');
+        return;
+      }
+      
+      // Формируем сообщение об отсутствии отчета
+      const message = `⚠️ *Внимание, администратор!*\n\n` +
+        `Пользователь *${user.name}* (ID: ${user.id}) не предоставил отчет по запросу.\n\n` +
+        `Время запроса: ${new Date(notification.notificationTime).toLocaleString('ru-RU')}\n\n` +
+        `Пожалуйста, свяжитесь с пользователем для выяснения причин.`;
+      
+      // Отправляем сообщение всем администраторам
+      for (const admin of admins) {
+        try {
+          await this.bot.telegram.sendMessage(
+            admin.telegramId,
+            message,
+            { 
+              parse_mode: 'Markdown',
+              reply_markup: {
+                inline_keyboard: [
+                  [{ text: `👁️ Просмотреть пользователя`, callback_data: `user_${user.id}` }]
+                ]
+              }
+            }
+          );
+          
+          console.log(`Уведомление администратору ${admin.telegramId} отправлено`);
+        } catch (error) {
+          console.error(`Ошибка при отправке уведомления администратору ${admin.telegramId}:`, error);
+        }
+      }
+    } catch (error) {
+      console.error('Ошибка при уведомлении администраторов о пропущенном отчете:', error);
     }
   }
 
@@ -138,6 +222,8 @@ export class SchedulerService {
           let message = `⚠️ *Внимание, администратор!*\n\n` +
             `Следующие пользователи не предоставили отчеты в указанное время:\n\n`;
 
+          const userButtons = [];
+          
           for (const [userId, notifications] of userNotifications.entries()) {
             const user = await UserService.findUserById(userId);
             if (user) {
@@ -145,15 +231,23 @@ export class SchedulerService {
                 .map(n => new Date(n.notificationTime).toLocaleString('ru-RU'))
                 .join(', ');
               
-              message += `*${user.name}*\n` +
+              message += `*${user.name}* (ID: ${userId})\n` +
                 `Время уведомлений: ${notificationTimes}\n\n`;
+              
+              // Добавляем кнопку для просмотра пользователя
+              userButtons.push([{ text: `👁️ ${user.name}`, callback_data: `user_${userId}` }]);
             }
           }
 
           await this.bot.telegram.sendMessage(
             admin.telegramId,
             message,
-            { parse_mode: 'Markdown' }
+            { 
+              parse_mode: 'Markdown',
+              reply_markup: {
+                inline_keyboard: userButtons
+              }
+            }
           );
           
           console.log(`Уведомление администратору отправлено: ${admin.telegramId}`);
@@ -188,7 +282,10 @@ export class SchedulerService {
                 `ℹ️ *Уведомление о рабочей сессии*\n\n` +
                 `Ваша рабочая сессия была автоматически завершена системой, ` +
                 `поскольку прошло более 24 часов с момента начала сессии.`,
-                { parse_mode: 'Markdown' }
+                { 
+                  parse_mode: 'Markdown',
+                  reply_markup: KeyboardBuilder.mainMenu().reply_markup
+                }
               );
             } catch (telegramError) {
               console.error(`Ошибка при отправке уведомления пользователю ${telegramAccount.telegramId}:`, telegramError);
