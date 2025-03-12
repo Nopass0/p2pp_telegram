@@ -56,10 +56,10 @@ function calculateMatchMetrics(transaction: any, idexTransaction: any): {
     // Проверяем, является ли total строкой JSON
     if (typeof idexTransaction.total === 'string') {
       const totalJson = JSON.parse(idexTransaction.total);
-      totalUsdt = parseFloat(totalJson.trader?.[643] || 0);
+      totalUsdt = parseFloat(totalJson.trader?.["000001"] || 0);
     } else {
       // Если total уже является объектом
-      totalUsdt = parseFloat(idexTransaction.total.trader?.[643] || 0);
+      totalUsdt = parseFloat(idexTransaction.total.trader?.["000001"] || 0);
     }
   } catch (error) {
     console.error('Ошибка при парсинге JSON поля total:', error);
