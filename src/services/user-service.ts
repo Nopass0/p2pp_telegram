@@ -624,9 +624,7 @@ export class UserService {
             take: 1
           }
         },
-        orderBy: {
-          lastLoginAt: 'desc'
-        }
+
       });
       
       return users;

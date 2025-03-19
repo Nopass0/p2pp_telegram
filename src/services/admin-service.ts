@@ -32,6 +32,8 @@ export class AdminService {
       return false;
     }
   }
+
+  
   
   /**
    * Получает список всех администраторов

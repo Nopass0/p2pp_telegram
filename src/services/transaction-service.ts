@@ -60,7 +60,7 @@ export class TransactionService {
           data: {
             externalId: externalId.toString(),
             orderNo: tx.orderNo || null,
-            dateTime,
+            dateTime: new Date(dateTime.getTime() + (3 * 60 * 60 * 1000)), // Переводим на московское время (UTC+3)
             type: tx.type,
             asset: tx.asset,
             amount: tx.amount,
