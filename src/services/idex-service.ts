@@ -117,10 +117,60 @@ export class IDEXService {
    * @returns Найденный кабинет или null
    */
   static async getCabinetById(id: number): Promise<any | null> {
-    return prisma.IdexCabinet.findUnique({
+    return prisma.idexCabinet.findUnique({
       where: { id }
     });
   }
+
+/**
+ * Находит кабинеты IDEX по их ID в системе IDEX
+ * @param idexIds Массив ID кабинетов в системе IDEX
+ * @returns Массив найденных кабинетов
+ */
+static async findCabinetsByIdexIds(idexIds: number[]): Promise<any[]> {
+  try {
+    // Сначала получим все кабинеты для отладки
+    const allCabinets = await prisma.idexCabinet.findMany();
+    console.log('Все кабинеты в базе:', allCabinets.map(c => ({ id: c.id, idexId: c.idexId, login: c.login })));
+    console.log('Искомые idexId:', idexIds);
+    
+    // Ищем по точному совпадению
+    const cabinets = await prisma.idexCabinet.findMany({
+      where: {
+        idexId: {
+          in: idexIds
+        }
+      }
+    });
+    
+    console.log('Найденные кабинеты:', cabinets.map(c => ({ id: c.id, idexId: c.idexId, login: c.login })));
+    
+    // Если кабинеты не найдены, попробуем найти их по строковому представлению ID
+    if (cabinets.length < idexIds.length) {
+      // Преобразуем числовые ID в строки для сравнения
+      const stringIdexIds = idexIds.map(id => id.toString());
+      
+      // Получаем все кабинеты и фильтруем их вручную
+      const allCabinets = await prisma.idexCabinet.findMany();
+      
+      // Собираем кабинеты, которые соответствуют любому из искомых ID (как числовому, так и строковому)
+      const matchingCabinets = allCabinets.filter(cabinet => 
+        idexIds.includes(cabinet.idexId) || 
+        stringIdexIds.includes(cabinet.idexId.toString())
+      );
+      
+      console.log('Кабинеты после ручной фильтрации:', matchingCabinets.map(c => ({ id: c.id, idexId: c.idexId, login: c.login })));
+      
+      return matchingCabinets;
+    }
+    
+    return cabinets;
+  } catch (error) {
+    console.error('Ошибка при поиске кабинетов IDEX по ID:', error);
+    console.error('Искомые ID:', idexIds);
+    return [];
+  }
+}
   
   /**
    * Удаляет IDEX кабинет по ID

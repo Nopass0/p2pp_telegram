@@ -68,6 +68,29 @@ export interface TransactionDB {
   userId: number;
 }
 
+export interface BybitTransaction {
+  orderNo: string;
+  dateTime: Date;
+  type: string;
+  asset: string;
+  amount: number;
+  totalPrice: number;
+  unitPrice: number;
+  counterparty?: string;
+  status: string;
+  [key: string]: any; // Для любых дополнительных полей
+}
+
+export interface ParsedBybitXLS {
+  transactions: BybitTransaction[];
+  summary: {
+    totalTransactions: number;
+    totalAmount: Record<string, number>;
+    totalValue: Record<string, number>;
+    averagePrice: Record<string, number>;
+  };
+}
+
 export interface ReportNotification {
   id: number;
   notificationTime: Date;

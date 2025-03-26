@@ -199,15 +199,12 @@ export class MenuHandler {
       return;
     }
 
-    // Устанавливаем состояние сессии для ожидания файла
-    ctx.session.lastAction = 'waiting_report';
+    // Предлагаем выбрать тип отчета
+    ctx.session.lastAction = 'waiting_report_type';
     
     await ctx.reply(
-      'Пожалуйста, перешлите CSV-файл из бота @wallet или другой P2P-платформы для анализа транзакций.\n\n' +
-      'Поддерживаются следующие форматы:\n' +
-      '- CSV файл (полная обработка)\n' +
-      '- Excel файлы (.xls, .xlsx) (базовая обработка)',
-      KeyboardBuilder.cancelKeyboard()
+      'Выберите тип отчета, который вы хотите загрузить:',
+      KeyboardBuilder.reportTypeKeyboard()
     );
   }
 

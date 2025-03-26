@@ -25,6 +25,8 @@
 - `services/scheduler-service.ts` - планировщик заданий
 - `services/prisma.ts` - единая точка доступа к ORM
 - `services/csv-parser.ts` - обработка CSV-файлов
+- `services/bybit-parser.ts` - обработка XLS-файлов с транзакциями Bybit
+- `services/bybit-transaction-service.ts` - управление транзакциями Bybit
 
 ### Утилиты и вспомогательные модули
 - `utils/message-formatter.ts` - форматирование сообщений
@@ -37,6 +39,7 @@
 - `telegraf` - фреймворк для создания Telegram ботов
 - `@prisma/client` - ORM для работы с базой данных
 - `csv-parse` - библиотека для работы с CSV-файлами
+- `xlsx` - библиотека для работы с XLS/XLSX-файлами
 - `dotenv` - управление переменными окружения
 - `axios` - HTTP-клиент для запросов
 

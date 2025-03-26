@@ -9,9 +9,10 @@ export class WorkSessionService {
   /**
    * Начинает новую рабочую сессию для пользователя
    * @param userId ID виртуального пользователя
+   * @param cabinetIds Массив ID кабинетов IDEX для связи с сессией
    * @returns Созданная сессия или null в случае ошибки
    */
-  static async startWorkSession(userId: number): Promise<WorkSession | null> {
+  static async startWorkSession(userId: number, cabinetIds?: number[]): Promise<WorkSession | null> {
     try {
       // Проверяем, есть ли уже активная сессия
       const activeSession = await this.getActiveSession(userId);
@@ -26,8 +27,30 @@ export class WorkSessionService {
         data: {
           userId,
           startTime: new Date()
+        },
+        include: {
+          idexCabinets: true
         }
       });
+      
+      // Если переданы ID кабинетов, связываем их с сессией
+      if (cabinetIds && cabinetIds.length > 0) {
+        // Обновляем каждый кабинет, устанавливая ссылку на созданную сессию
+        await Promise.all(cabinetIds.map(cabinetId => 
+          prisma.idexCabinet.update({
+            where: { id: cabinetId },
+            data: { workSessionId: session.id }
+          })
+        ));
+        
+        // Получаем обновленную сессию со связанными кабинетами
+        const updatedSession = await prisma.workSession.findUnique({
+          where: { id: session.id },
+          include: { idexCabinets: true }
+        });
+        
+        return updatedSession || session;
+      }
       
       return session;
     } catch (error) {
@@ -59,12 +82,25 @@ export class WorkSessionService {
       const durationMs = endTime.getTime() - startTime.getTime();
       const durationMinutes = Math.floor(durationMs / (1000 * 60));
       
+      // Отвязываем кабинеты от сессии
+      if (activeSession.idexCabinets && activeSession.idexCabinets.length > 0) {
+        await Promise.all(activeSession.idexCabinets.map(cabinet =>
+          prisma.idexCabinet.update({
+            where: { id: cabinet.id },
+            data: { workSessionId: null }
+          })
+        ));
+      }
+      
       // Обновляем сессию
       const updatedSession = await prisma.workSession.update({
         where: { id: activeSession.id },
         data: {
           endTime,
           duration: durationMinutes
+        },
+        include: {
+          idexCabinets: true
         }
       });
       
@@ -87,6 +123,9 @@ export class WorkSessionService {
         where: {
           userId,
           endTime: null
+        },
+        include: {
+          idexCabinets: true
         }
       });
       
@@ -106,7 +145,10 @@ export class WorkSessionService {
     try {
       const sessions = await prisma.workSession.findMany({
         where: { userId },
-        orderBy: { startTime: 'desc' }
+        orderBy: { startTime: 'desc' },
+        include: {
+          idexCabinets: true
+        }
       });
       
       return sessions;
@@ -128,7 +170,10 @@ export class WorkSessionService {
           userId,
           endTime: { not: null }
         },
-        orderBy: { endTime: 'desc' }
+        orderBy: { endTime: 'desc' },
+        include: {
+          idexCabinets: true
+        }
       });
       
       return session;
@@ -149,7 +194,7 @@ export class WorkSessionService {
     userId: number,
     startDate: Date,
     endDate: Date
-  ): Promise<{ totalSessions: number, totalDuration: number } | null> {
+  ): Promise<{ totalSessions: number, totalDuration: number, averageDuration: number } | null> {
     try {
       // Находим все сессии в указанном промежутке
       const sessions = await prisma.workSession.findMany({
@@ -157,21 +202,28 @@ export class WorkSessionService {
           userId,
           startTime: { gte: startDate },
           endTime: { lte: endDate, not: null }
+        },
+        include: {
+          idexCabinets: true
         }
       });
       
       // Если сессий нет, возвращаем нулевую статистику
       if (sessions.length === 0) {
-        return { totalSessions: 0, totalDuration: 0 };
+        return { totalSessions: 0, totalDuration: 0, averageDuration: 0 };
       }
       
       // Считаем общую продолжительность
       const totalDuration = sessions.reduce((sum, session) => 
         sum + (session.duration || 0), 0);
       
+      // Средняя продолжительность
+      const averageDuration = totalDuration / sessions.length;
+      
       return {
         totalSessions: sessions.length,
-        totalDuration
+        totalDuration,
+        averageDuration
       };
     } catch (error) {
       console.error('Ошибка при получении статистики рабочих сессий:', error);
@@ -194,6 +246,9 @@ export class WorkSessionService {
         where: {
           startTime: { lt: twentyFourHoursAgo },
           endTime: null
+        },
+        include: {
+          idexCabinets: true
         }
       });
       
@@ -211,6 +266,16 @@ export class WorkSessionService {
         const startTime = new Date(session.startTime);
         const durationMs = endTime.getTime() - startTime.getTime();
         const durationMinutes = Math.floor(durationMs / (1000 * 60));
+        
+        // Отвязываем кабинеты от сессии
+        if (session.idexCabinets && session.idexCabinets.length > 0) {
+          await Promise.all(session.idexCabinets.map(cabinet =>
+            prisma.idexCabinet.update({
+              where: { id: cabinet.id },
+              data: { workSessionId: null }
+            })
+          ));
+        }
         
         await prisma.workSession.update({
           where: { id: session.id },
@@ -298,7 +363,10 @@ export class WorkSessionService {
   ): Promise<WorkSession | null> {
     try {
       const session = await prisma.workSession.findUnique({
-        where: { id: sessionId }
+        where: { id: sessionId },
+        include: {
+          idexCabinets: true
+        }
       });
       
       if (!session) {
@@ -351,7 +419,10 @@ export class WorkSessionService {
       // Обновляем запись в БД
       const updatedSession = await prisma.workSession.update({
         where: { id: sessionId },
-        data: updateData
+        data: updateData,
+        include: {
+          idexCabinets: true
+        }
       });
       
       return updatedSession;

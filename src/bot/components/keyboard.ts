@@ -862,4 +862,14 @@ static adminManagementKeyboard(userId: number) {
       ['🔙 Назад к управлению']
     ]).resize();
   }
+
+  /**
+   * Создает клавиатуру для выбора типа отчета
+   */
+  static reportTypeKeyboard(): any {
+    return Markup.keyboard([
+      [{ text: '💸 Telegram кошелек' }, { text: '📊 Bybit' }],
+      [{ text: '❌ Отмена' }]
+    ]).resize();
+  }
 }

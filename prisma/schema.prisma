@@ -1,9 +1,3 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
-// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
-// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
-
 generator client {
   provider = "prisma-client-js"
 }
@@ -13,165 +7,263 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-// Виртуальный пользователь системы
 model User {
-  id                 Int                 @id @default(autoincrement())
-  name               String              // Имя пользователя
-  passCode           String              @unique // Код-пароль для идентификации
-  isActive           Boolean             @default(true) // Активен ли пользователь
-  createdAt          DateTime            @default(now())
-  updatedAt          DateTime            @updatedAt
-  telegramAccounts   TelegramAccount[]   // Связанные телеграм аккаунты
-  transactions       Transaction[]       // Связанные транзакции
-  workSessions       WorkSession[]       // Сессии работы
-  lastNotification   DateTime?           // Время последнего уведомления
-  reportNotifications ReportNotification[] // Уведомления о загрузке отчетов
+  id                  Int                  @id @default(autoincrement())
+  name                String
+  passCode            String               @unique
+  isActive            Boolean              @default(true)
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
+  lastNotification    DateTime?
+  reportNotifications ReportNotification[]
+  telegramAccounts    TelegramAccount[]
+  transactions        Transaction[]
+  workSessions        WorkSession[]
+  bybitTransactions   BybitTransaction[]
 }
 
-// Телеграм аккаунт пользователя
 model TelegramAccount {
-  id          Int       @id @default(autoincrement())
-  telegramId  String    @unique // ID пользователя в Telegram
-  username    String?   // Имя пользователя в Telegram
-  firstName   String?   // Имя в Telegram
-  lastName    String?   // Фамилия в Telegram
-  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  userId      Int
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
+  id         Int      @id @default(autoincrement())
+  telegramId String   @unique
+  username   String?
+  firstName  String?
+  lastName   String?
+  userId     Int
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
-// Администратор системы
 model Admin {
-  id         Int       @id @default(autoincrement())
-  telegramId String    @unique // ID администратора в Telegram
-  username   String?   // Имя пользователя в Telegram
-  firstName  String?   // Имя в Telegram
-  lastName   String?   // Фамилия в Telegram
-  createdAt  DateTime  @default(now())
-  updatedAt  DateTime  @updatedAt
+  id         Int      @id @default(autoincrement())
+  telegramId String   @unique
+  username   String?
+  firstName  String?
+  lastName   String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
 }
 
-// Настройки системы
 model SystemSettings {
-  id                      Int       @id @default(autoincrement())
-  reportReminderInterval  Int       @default(180) // Интервал напоминаний в минутах (по умолчанию 3 часа)
-  reportWaitTime          Int       @default(10)  // Время ожидания отчета после напоминания в минутах
-  createdAt               DateTime  @default(now())
-  updatedAt               DateTime  @updatedAt
+  id                     Int      @id @default(autoincrement())
+  reportReminderInterval Int      @default(180)
+  reportWaitTime         Int      @default(10)
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
 }
 
-// P2P транзакция
 model Transaction {
-  id             Int       @id @default(autoincrement())
-  externalId     String?   // Внешний ID транзакции
-  orderNo        String?   // Номер заказа
-  dateTime       DateTime  // Дата и время транзакции
-  type           String    // Тип транзакции (покупка/продажа)
-  asset          String    // Актив (валюта)
-  amount         Float     // Количество
-  totalPrice     Float     // Общая стоимость
-  unitPrice      Float     // Цена за единицу
-  counterparty   String?   // Контрагент
-  status         String    // Статус транзакции
-  originalData   Json?     // Оригинальные данные из CSV в формате JSON
-  user           User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  userId         Int
-  createdAt      DateTime  @default(now())
-  updatedAt      DateTime  @updatedAt
-
-  matches          Match[]         // Связь с матчами
+  id           Int      @id @default(autoincrement())
+  externalId   String?
+  orderNo      String?
+  dateTime     DateTime
+  type         String
+  asset        String
+  amount       Float
+  totalPrice   Float
+  unitPrice    Float
+  counterparty String?
+  status       String
+  originalData Json?
+  userId       Int
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  matches      Match[]
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([externalId, userId])
 }
 
-// Сессия работы пользователя
+model BybitTransaction {
+  id           Int      @id @default(autoincrement())
+  orderNo      String
+  dateTime     DateTime
+  type         String
+  asset        String
+  amount       Float
+  totalPrice   Float
+  unitPrice    Float
+  counterparty String?
+  status       String
+  originalData Json?
+  userId       Int
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([orderNo, userId])
+}
+
 model WorkSession {
-  id            Int       @id @default(autoincrement())
-  startTime     DateTime  // Время начала работы
-  endTime       DateTime? // Время окончания работы (null если сессия активна)
-  duration      Int?      // Продолжительность в минутах (заполняется при завершении)
-  autoCompleted Boolean   @default(false) // Было ли автоматически завершено после 24 часов
-  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id            Int           @id @default(autoincrement())
+  startTime     DateTime
+  endTime       DateTime?
+  duration      Int?
+  autoCompleted Boolean       @default(false)
   userId        Int
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
+  idexCabinets  IdexCabinet[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
-// Уведомление о загрузке отчета
 model ReportNotification {
-  id                Int       @id @default(autoincrement())
-  notificationTime  DateTime  // Время отправки уведомления
-  reportReceived    Boolean   @default(false) // Был ли получен отчет
-  reportTime        DateTime? // Время получения отчета (если был получен)
-  adminNotified     Boolean   @default(false) // Был ли уведомлен админ о непредоставлении отчета
-  adminNotifyTime   DateTime? // Время уведомления админа
-  user              User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  userId            Int
-  createdAt         DateTime  @default(now())
-  updatedAt         DateTime  @updatedAt
+  id               Int       @id @default(autoincrement())
+  notificationTime DateTime
+  reportReceived   Boolean   @default(false)
+  reportTime       DateTime?
+  adminNotified    Boolean   @default(false)
+  adminNotifyTime  DateTime?
+  userId           Int
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+  user             User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
-// Настройки уведомлений системы
 model NotificationSettings {
-  id          Int       @id @default(autoincrement())
-  settings    Json      // Настройки уведомлений в JSON формате
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
+  id        Int      @id @default(autoincrement())
+  settings  Json
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 model IdexCabinet {
-  id          Int       @id @default(autoincrement())
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
-
-  idexId      Int
-  login       String
-  password    String
-  
-  transactions IdexTransaction[] // Связанные транзакции
+  id            Int               @id @default(autoincrement())
+  createdAt     DateTime          @default(now())
+  updatedAt     DateTime          @updatedAt
+  idexId        Int
+  login         String
+  password      String
+  transactions  IdexTransaction[]
+  IdexSyncOrder IdexSyncOrder[]
+  WorkSession   WorkSession?      @relation(fields: [workSessionId], references: [id])
+  workSessionId Int?
 }
 
-// Транзакция из IDEX
 model IdexTransaction {
   id                Int         @id @default(autoincrement())
-  externalId        BigInt      // ID транзакции в IDEX
-  paymentMethodId   BigInt      // ID метода платежа
-  wallet            String      // Кошелек
-  amount            Json        // Сумма транзакции (объект)
-  total             Json        // Общая сумма (объект)
-  status            Int         // Статус транзакции
-  approvedAt        String?     // Дата одобрения (если есть)
-  expiredAt         String?     // Дата истечения срока (если есть)
-  createdAtExternal String      // Дата создания в IDEX
-  updatedAtExternal String      // Дата обновления в IDEX
-  extraData         Json        // Дополнительные данные в JSON формате
-  
-  cabinet           IdexCabinet @relation(fields: [cabinetId], references: [id], onDelete: Cascade)
+  externalId        BigInt
+  paymentMethodId   BigInt
+  wallet            String
+  amount            Json
+  total             Json
+  status            Int
+  approvedAt        String?
+  expiredAt         String?
+  createdAtExternal String
+  updatedAtExternal String
+  extraData         Json
   cabinetId         Int
-  
   createdAt         DateTime    @default(now())
   updatedAt         DateTime    @updatedAt
-
-  matches          Match[]         // Связь с матчами
+  cabinet           IdexCabinet @relation(fields: [cabinetId], references: [id], onDelete: Cascade)
+  matches           Match[]
 
   @@unique([externalId, cabinetId])
 }
 
-
 model Match {
-  id               Int             @id @default(autoincrement())
-  idexTransaction  IdexTransaction @relation(fields: [idexTransactionId], references: [id])
+  id                Int             @id @default(autoincrement())
   idexTransactionId Int
-  transaction      Transaction     @relation(fields: [transactionId], references: [id])
-  transactionId    Int
-  timeDifference   Int             // Разница во времени в секундах
-  grossExpense     Float           // Расчетные расходы для этого матча
-  grossIncome      Float           // Расчетный доход для этого матча  
-  grossProfit      Float           // Расчетная прибыль для этого матча
-  profitPercentage Float           // Расчетный процент прибыли
-  createdAt        DateTime        @default(now())
-  updatedAt        DateTime        @updatedAt
+  transactionId     Int
+  timeDifference    Int
+  grossExpense      Float
+  grossIncome       Float
+  grossProfit       Float
+  profitPercentage  Float
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+  idexTransaction   IdexTransaction @relation(fields: [idexTransactionId], references: [id])
+  transaction       Transaction     @relation(fields: [transactionId], references: [id])
 
   @@unique([idexTransactionId, transactionId])
+}
+
+model Card {
+  id         Int      @id @default(autoincrement())
+  externalId Int
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  provider    String
+  cardNumber  String
+  bank        String
+  phoneNumber String
+  appPin      Int
+  terminalPin String
+  balances    CardBalance[]
+
+  comment String
+  status  String
+  picachu String
+}
+
+model CardBalance {
+  id           Int      @id @default(autoincrement())
+  cardId       Int
+  card         Card     @relation(fields: [cardId], references: [id], onDelete: Cascade)
+  date         DateTime
+  startBalance Float
+  endBalance   Float
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@unique([cardId, date])
+}
+
+model Salary {
+  id          Int             @id @default(autoincrement())
+  fullName    String
+  position    String
+  startDate   DateTime
+  payday      Int // День выплаты зарплаты в месяце
+  paydayMonth Int? // Месяц выплаты (null если ежемесячно)
+  fixedSalary Float? // Фиксированная зарплата (null если не фиксированная)
+  isActive    Boolean         @default(true)
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+  payments    SalaryPayment[]
+}
+
+model SalaryPayment {
+  id          Int      @id @default(autoincrement())
+  salaryId    Int
+  salary      Salary   @relation(fields: [salaryId], references: [id], onDelete: Cascade)
+  amount      Float
+  paymentDate DateTime
+  comment     String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+// model SalaryDep {
+//   id  Int @id @default(autoincrement())
+//   date DateTime
+//   amount  Float
+
+//   user  
+// }
+
+enum IdexSyncOrderStatus {
+  PENDING
+  IN_PROGRESS
+  COMPLETED
+  FAILED
+}
+
+model IdexSyncOrder {
+  id        Int      @id @default(autoincrement())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  cabinetId Int?
+  cabinet   IdexCabinet? @relation(fields: [cabinetId], references: [id], onDelete: Cascade)
+
+  processed Json? // [{cabinetId: 1, transactions: 200, newTransactions: 100}]
+
+  status      IdexSyncOrderStatus
+  startSyncAt DateTime?
+  endSyncAt   DateTime?
+  pages       Int[]
 }
