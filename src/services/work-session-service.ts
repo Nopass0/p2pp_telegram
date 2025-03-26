@@ -82,15 +82,7 @@ export class WorkSessionService {
       const durationMs = endTime.getTime() - startTime.getTime();
       const durationMinutes = Math.floor(durationMs / (1000 * 60));
       
-      // Отвязываем кабинеты от сессии
-      if (activeSession.idexCabinets && activeSession.idexCabinets.length > 0) {
-        await Promise.all(activeSession.idexCabinets.map(cabinet =>
-          prisma.idexCabinet.update({
-            where: { id: cabinet.id },
-            data: { workSessionId: null }
-          })
-        ));
-      }
+
       
       // Обновляем сессию
       const updatedSession = await prisma.workSession.update({
@@ -267,15 +259,7 @@ export class WorkSessionService {
         const durationMs = endTime.getTime() - startTime.getTime();
         const durationMinutes = Math.floor(durationMs / (1000 * 60));
         
-        // Отвязываем кабинеты от сессии
-        if (session.idexCabinets && session.idexCabinets.length > 0) {
-          await Promise.all(session.idexCabinets.map(cabinet =>
-            prisma.idexCabinet.update({
-              where: { id: cabinet.id },
-              data: { workSessionId: null }
-            })
-          ));
-        }
+
         
         await prisma.workSession.update({
           where: { id: session.id },
